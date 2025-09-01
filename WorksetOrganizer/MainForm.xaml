@@ -2,45 +2,47 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Workset Orchestrator" Height="500" Width="600" WindowStartupLocation="CenterScreen">
-    <Grid Margin="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+	<Grid Margin="10">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
 
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="Auto"/>
+			<ColumnDefinition Width="*"/>
+			<ColumnDefinition Width="Auto"/>
+		</Grid.ColumnDefinitions>
 
-        <!-- Excel File Path -->
-        <Label Grid.Row="0" Grid.Column="0" Content="Excel File:" Margin="0,0,5,5"/>
-        <TextBox Grid.Row="0" Grid.Column="1" Name="txtExcelPath" Margin="0,0,5,5"/>
-        <Button Grid.Row="0" Grid.Column="2" Content="Browse..." Name="btnBrowseExcel" Click="BtnBrowseExcel_Click" Width="60" Margin="0,0,0,5"/>
+		<!-- Excel File Path -->
+		<Label Grid.Row="0" Grid.Column="0" Content="Excel File:" Margin="0,0,5,5"/>
+		<TextBox Grid.Row="0" Grid.Column="1" Name="txtExcelPath" Margin="0,0,5,5"/>
+		<Button Grid.Row="0" Grid.Column="2" Content="Browse..." Name="btnBrowseExcel" Click="BtnBrowseExcel_Click" Width="60" Margin="0,0,0,5"/>
 
-        <!-- Destination Folder -->
-        <Label Grid.Row="1" Grid.Column="0" Content="Destination:" Margin="0,0,5,5"/>
-        <TextBox Grid.Row="1" Grid.Column="1" Name="txtDestination" Margin="0,0,5,5"/>
-        <Button Grid.Row="1" Grid.Column="2" Content="Browse..." Name="btnBrowseDestination" Click="BtnBrowseDestination_Click" Width="60" Margin="0,0,0,5"/>
+		<!-- Destination Folder -->
+		<Label Grid.Row="1" Grid.Column="0" Content="Destination:" Margin="0,0,5,5"/>
+		<TextBox Grid.Row="1" Grid.Column="1" Name="txtDestination" Margin="0,0,5,5"/>
+		<Button Grid.Row="1" Grid.Column="2" Content="Browse..." Name="btnBrowseDestination" Click="BtnBrowseDestination_Click" Width="60" Margin="0,0,0,5"/>
 
-        <!-- Options -->
-        <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Name="chkOverwrite" Content="Overwrite existing files?" Margin="0,10,0,5"/>
-        <CheckBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Name="chkExportQc" Content="Export DX_QC category?" Margin="0,0,0,10"/>
+		<!-- Options -->
+		<CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Name="chkOverwrite" Content="Overwrite existing files?" Margin="0,10,0,5"/>
+		<CheckBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Name="chkExportQc" Content="Export DX_QC category?" Margin="0,0,0,10"/>
 
-        <!-- Log Window -->
-        <Label Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Content="Log:"/>
-        <TextBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Name="txtLog" 
+		<!-- Log Window -->
+		<Label Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Content="Log:"/>
+		<TextBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Name="txtLog"
                  IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                  TextWrapping="Wrap" AcceptsReturn="True" Margin="0,0,0,10"/>
 
-        <!-- Buttons -->
-        <Button Grid.Row="6" Grid.Column="1" Content="Run" Name="btnRun" Click="BtnRun_Click" Width="80" HorizontalAlignment="Right" Margin="0,0,90,0"/>
-        <Button Grid.Row="6" Grid.Column="1" Content="Cancel" Name="btnCancel" Click="BtnCancel_Click" Width="80" HorizontalAlignment="Right"/>
-    </Grid>
+		<!-- Buttons -->
+		<StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,0">
+			<Button Content="Run" Name="btnRun" Click="BtnRun_Click" Width="80" Margin="0,0,10,0"/>
+			<Button Content="Cancel" Name="btnCancel" Click="BtnCancel_Click" Width="80"/>
+		</StackPanel>
+	</Grid>
 </Window>

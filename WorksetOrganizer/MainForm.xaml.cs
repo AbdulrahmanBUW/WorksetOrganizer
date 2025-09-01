@@ -3,7 +3,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
-using System.Windows.Forms;
+using System.Windows.Interop;
+using System.Windows.Forms; // Only for FolderBrowserDialog
 
 namespace WorksetOrchestrator
 {
@@ -12,21 +13,39 @@ namespace WorksetOrchestrator
         private UIDocument _uiDoc;
         private WorksetOrchestrator _orchestrator;
 
-        public MainForm(UIDocument uiDoc)
+        public MainForm(UIDocument uiDoc, IntPtr revitMainWindowHandle)
         {
             InitializeComponent();
             _uiDoc = uiDoc;
             _orchestrator = new WorksetOrchestrator(uiDoc);
             _orchestrator.LogUpdated += OnLogUpdated;
 
-            // Set Revit as owner window
-            this.Owner = RevitWindow.GetRevitWindow();
+            // Set Revit as owner window via handle if available
+            try
+            {
+                if (revitMainWindowHandle != IntPtr.Zero)
+                {
+                    var helper = new WindowInteropHelper(this);
+                    helper.Owner = revitMainWindowHandle;
+                }
+                else
+                {
+                    var revitWindow = RevitWindow.GetRevitWindow();
+                    if (revitWindow != null)
+                        this.Owner = revitWindow;
+                }
+            }
+            catch
+            {
+                // Owner window is optional
+            }
         }
 
         private void OnLogUpdated(object sender, string message)
         {
-            // Thread-safe update of the log textbox
-            Dispatcher.Invoke(() => {
+            // Thread-safe log update
+            Dispatcher.Invoke(() =>
+            {
                 txtLog.AppendText(message + Environment.NewLine);
                 txtLog.ScrollToEnd();
             });
@@ -40,7 +59,8 @@ namespace WorksetOrchestrator
                 Title = "Select Workset Mapping Excel File"
             };
 
-            if (openFileDialog.ShowDialog() == true)
+            bool? result = openFileDialog.ShowDialog(); // WPF OpenFileDialog returns bool?
+            if (result == true)
             {
                 txtExcelPath.Text = openFileDialog.FileName;
             }
@@ -59,17 +79,19 @@ namespace WorksetOrchestrator
             }
         }
 
-        private async void BtnRun_Click(object sender, RoutedEventArgs e)
+        private void BtnRun_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(txtExcelPath.Text) || !File.Exists(txtExcelPath.Text))
             {
-                System.Windows.MessageBox.Show("Please select a valid Excel file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show("Please select a valid Excel file.", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
             if (string.IsNullOrEmpty(txtDestination.Text) || !Directory.Exists(txtDestination.Text))
             {
-                System.Windows.MessageBox.Show("Please select a valid destination folder.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show("Please select a valid destination folder.", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -78,31 +100,32 @@ namespace WorksetOrchestrator
 
             try
             {
-                // Read mapping from Excel
                 LogMessage("Reading Excel mapping file...");
                 var mapping = ExcelReader.ReadMapping(txtExcelPath.Text);
                 LogMessage($"Found {mapping.Count} mapping records.");
 
-                // Process the mapping
-                bool success = await System.Threading.Tasks.Task.Run(() =>
-                    _orchestrator.Execute(mapping, txtDestination.Text, chkOverwrite.IsChecked == true, chkExportQc.IsChecked == true)
-                );
+                // Execute orchestrator synchronously on Revit thread
+                bool success = _orchestrator.Execute(mapping, txtDestination.Text,
+                    chkOverwrite.IsChecked == true, chkExportQc.IsChecked == true);
 
                 if (success)
                 {
                     LogMessage("Process completed successfully!");
-                    System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
                     LogMessage("Process completed with errors.");
-                    System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.",
+                        "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)
             {
                 LogMessage($"ERROR: {ex.Message}");
-                System.Windows.MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"An error occurred: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -122,12 +145,25 @@ namespace WorksetOrchestrator
         }
     }
 
-    // Helper class to get Revit's main window handle
+    // Helper class to get Revit's main window handle safely
     public static class RevitWindow
     {
-        public static Window GetRevitWindow()
+        public static System.Windows.Window GetRevitWindow()
         {
-            return System.Windows.Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.Title.Contains("Revit"));
+            try
+            {
+                var app = System.Windows.Application.Current;
+                if (app == null) return null;
+
+                return app.Windows
+                          .OfType<System.Windows.Window>()
+                          .FirstOrDefault(w => !string.IsNullOrEmpty(w?.Title) &&
+                                               w.Title.IndexOf("Revit", StringComparison.OrdinalIgnoreCase) >= 0);
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

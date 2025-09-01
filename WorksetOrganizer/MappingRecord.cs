@@ -18,7 +18,7 @@ namespace WorksetOrchestrator
                     return "NO EXPORT";
 
                 // Normalize by stripping all digits and 'x' placeholders
-                return Regex.Replace(ModelPackageCode, @"[\dx]", "");
+                return Regex.Replace(ModelPackageCode ?? "", @"[\dx]", "");
             }
         }
     }

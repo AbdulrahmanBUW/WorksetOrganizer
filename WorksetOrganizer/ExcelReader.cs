@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using Microsoft.Office.Interop.Excel;
+using System.IO;
+using OfficeOpenXml;
 
 namespace WorksetOrchestrator
 {
@@ -9,84 +10,47 @@ namespace WorksetOrchestrator
         public static List<MappingRecord> ReadMapping(string excelFilePath)
         {
             var mappingList = new List<MappingRecord>();
-            Application excelApp = null;
-            Workbook workbook = null;
 
-            try
+            using (var package = new ExcelPackage(new FileInfo(excelFilePath)))
             {
-                excelApp = new Application { Visible = false };
-                workbook = excelApp.Workbooks.Open(excelFilePath);
-
-                Worksheet worksheet = workbook.Sheets["Mapping"] as Worksheet;
+                var worksheet = package.Workbook.Worksheets["Mapping"];
                 if (worksheet == null)
                     throw new Exception("Worksheet named 'Mapping' not found.");
 
-                Range usedRange = worksheet.UsedRange;
-                int rowCount = usedRange.Rows.Count;
-                int colCount = usedRange.Columns.Count;
+                int rowCount = worksheet.Dimension.End.Row;
+                int colCount = worksheet.Dimension.End.Column;
 
-                // Find column indices by header name
+                // Find header indices
                 var headers = new Dictionary<string, int>();
                 for (int col = 1; col <= colCount; col++)
                 {
-                    string headerValue = (usedRange.Cells[1, col] as Range)?.Value2?.ToString();
+                    string headerValue = worksheet.Cells[1, col].Text?.Trim();
                     if (!string.IsNullOrEmpty(headerValue))
-                        headers[headerValue.Trim()] = col;
+                        headers[headerValue] = col;
                 }
 
-                // Verify all required headers are present
                 string[] requiredHeaders = { "Workset Name", "System Name in Model File", "System Description", "Model iFLS/Package Code" };
                 foreach (string header in requiredHeaders)
-                {
                     if (!headers.ContainsKey(header))
                         throw new Exception($"Required header '{header}' not found in Excel sheet.");
-                }
 
-                // Read data rows
+                // Read data
                 for (int row = 2; row <= rowCount; row++)
                 {
                     var record = new MappingRecord
                     {
-                        WorksetName = GetCellValue(usedRange, row, headers["Workset Name"]),
-                        SystemNameInModel = GetCellValue(usedRange, row, headers["System Name in Model File"]),
-                        SystemDescription = GetCellValue(usedRange, row, headers["System Description"]),
-                        ModelPackageCode = GetCellValue(usedRange, row, headers["Model iFLS/Package Code"])
+                        WorksetName = worksheet.Cells[row, headers["Workset Name"]].Text,
+                        SystemNameInModel = worksheet.Cells[row, headers["System Name in Model File"]].Text,
+                        SystemDescription = worksheet.Cells[row, headers["System Description"]].Text,
+                        ModelPackageCode = worksheet.Cells[row, headers["Model iFLS/Package Code"]].Text
                     };
 
-                    // Only add if it has essential data
                     if (!string.IsNullOrEmpty(record.WorksetName) && !string.IsNullOrEmpty(record.SystemNameInModel))
                         mappingList.Add(record);
                 }
             }
-            finally
-            {
-                // Clean up COM objects
-                if (workbook != null)
-                {
-                    workbook.Close(false);
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(workbook);
-                }
-
-                if (excelApp != null)
-                {
-                    excelApp.Quit();
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(excelApp);
-                }
-            }
 
             return mappingList;
-        }
-
-        private static string GetCellValue(Range range, int row, int col)
-        {
-            try
-            {
-                return (range.Cells[row, col] as Range)?.Value2?.ToString() ?? "";
-            }
-            catch
-            {
-                return "";
-            }
         }
     }
 }

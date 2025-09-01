@@ -2,6 +2,7 @@
 using System.IO;
 using System.Reflection;
 using Autodesk.Revit.UI;
+using OfficeOpenXml; // EPPlus
 
 namespace WorksetOrchestrator
 {
@@ -35,11 +36,9 @@ namespace WorksetOrchestrator
             // Add button to panel
             PushButton button = panel.AddItem(buttonData) as PushButton;
 
-            // Add an icon (optional)
-            // button.LargeImage = ...;
-
             return Result.Succeeded;
         }
+
 
         public Result OnShutdown(UIControlledApplication application)
         {

@@ -1,15 +1,9 @@
-﻿using Autodesk.Revit.ApplicationServices;
-using Autodesk.Revit.DB;
-using Autodesk.Revit.DB.Events;
+﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using Microsoft.Office.Interop.Excel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Xml.Linq;
-using RevitParameter = Autodesk.Revit.DB.Parameter;
-
 
 namespace WorksetOrchestrator
 {
@@ -40,40 +34,35 @@ namespace WorksetOrchestrator
         {
             try
             {
-                // 1. VERIFY WORKSHARING
                 if (!_doc.IsWorkshared)
                 {
                     LogMessage("ERROR: Document is not workshared. Please enable worksharing.");
                     return false;
                 }
 
-                // 2. GET/CREATE THE DX_QC WORKSET
-                WorksetId qcWorksetId = GetOrCreateWorkset("DX_QC");
+                var packageGroupMapping = new Dictionary<string, List<ElementId>>();
 
                 using (Transaction trans = new Transaction(_doc, "Process Workset Mapping"))
                 {
                     trans.Start();
 
-                    // 3. PROCESS EACH MAPPING RECORD
-                    var packageGroupMapping = new Dictionary<string, List<ElementId>>();
+                    // 1️⃣ Create DX_QC workset inside transaction
+                    WorksetId qcWorksetId = GetOrCreateWorkset("DX_QC");
 
                     foreach (var record in mapping)
                     {
                         LogMessage($"Processing record for system: {record.SystemNameInModel}");
 
-                        // Skip processing for NO EXPORT
                         if (record.ModelPackageCode == "NO EXPORT")
                         {
                             LogMessage($"Skipped - Marked as 'NO EXPORT'.");
                             continue;
                         }
 
-                        // Get or create the target workset for this record
+                        // Create/get target workset inside transaction
                         WorksetId targetWorksetId = GetOrCreateWorkset(record.WorksetName);
 
-                        // Find all elements with the matching System Name parameter
-                        FilteredElementCollector collector = new FilteredElementCollector(_doc);
-                        var elements = collector
+                        var collector = new FilteredElementCollector(_doc)
                             .OfClass(typeof(FamilyInstance))
                             .WhereElementIsNotElementType()
                             .Where(e =>
@@ -82,81 +71,59 @@ namespace WorksetOrchestrator
                             )
                             .ToList();
 
-                        LogMessage($"Found {elements.Count} elements for system '{record.SystemNameInModel}'.");
+                        LogMessage($"Found {collector.Count} elements for system '{record.SystemNameInModel}'.");
 
-                        // Move elements to the target workset
                         int movedCount = 0;
-                        foreach (Element element in elements)
+                        foreach (Element element in collector)
                         {
-                            RevitParameter worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                            var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
                             if (worksetParam != null && !worksetParam.IsReadOnly && element.WorksetId != targetWorksetId)
                             {
                                 worksetParam.Set(targetWorksetId.IntegerValue);
                                 movedCount++;
                             }
                         }
+
                         LogMessage($"Moved {movedCount} elements to workset '{record.WorksetName}'.");
 
-                        // Store element IDs for this package group for later export
                         string normalizedCode = record.NormalizedPackageCode;
                         if (!packageGroupMapping.ContainsKey(normalizedCode))
-                        {
                             packageGroupMapping[normalizedCode] = new List<ElementId>();
-                        }
-                        packageGroupMapping[normalizedCode].AddRange(elements.Select(e => e.Id));
+
+                        packageGroupMapping[normalizedCode].AddRange(collector.Select(e => e.Id));
                     }
 
-                    // 4. HANDLE ORPHANED ELEMENTS (Move to DX_QC)
-                    FilteredElementCollector allElementsCollector = new FilteredElementCollector(_doc);
-                    var allElementIds = allElementsCollector
+                    // Move orphaned elements to DX_QC
+                    var allElementIds = new FilteredElementCollector(_doc)
                         .WhereElementIsNotElementType()
                         .ToElementIds()
                         .ToHashSet();
 
-                    // Subtract all elements we just processed from the total set
-                    var processedElementIds = packageGroupMapping.Values.SelectMany(idList => idList).ToHashSet();
+                    var processedElementIds = packageGroupMapping.Values.SelectMany(x => x).ToHashSet();
                     allElementIds.ExceptWith(processedElementIds);
 
                     int orphanedCount = 0;
-                    foreach (ElementId orphanId in allElementIds)
+                    foreach (var orphanId in allElementIds)
                     {
-                        Element element = _doc.GetElement(orphanId);
-                        RevitParameter worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                        var element = _doc.GetElement(orphanId);
+                        var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
                         if (worksetParam != null && !worksetParam.IsReadOnly && element.WorksetId != qcWorksetId)
                         {
                             worksetParam.Set(qcWorksetId.IntegerValue);
                             orphanedCount++;
                         }
                     }
+
                     LogMessage($"Moved {orphanedCount} orphaned elements to 'DX_QC' workset.");
 
                     trans.Commit();
-
-                    // 5. EXPORT LOGIC
-                    if (exportQc)
-                    {
-                        // Add QC workset to the export groups if user chose to export it
-                        var qcElements = new FilteredElementCollector(_doc)
-                            .WhereElementIsNotElementType()
-                            .Where(e => e.WorksetId == qcWorksetId)
-                            .Select(e => e.Id)
-                            .ToList();
-
-                        if (qcElements.Any())
-                        {
-                            packageGroupMapping["QC"] = qcElements;
-                        }
-                    }
-
-                    // Perform the exports
-                    ExportRVTs(packageGroupMapping, destinationPath, overwriteFiles);
                 }
 
-                // Write final log file
-                System.IO.File.WriteAllText(
-                    System.IO.Path.Combine(destinationPath, "WorksetOrchestrationLog.txt"),
-                    _log.ToString()
-                );
+                // Export logic outside transaction
+                ExportRVTs(packageGroupMapping, destinationPath, overwriteFiles, exportQc);
+
+                // Write final log
+                System.IO.File.WriteAllText(System.IO.Path.Combine(destinationPath, "WorksetOrchestrationLog.txt"), _log.ToString());
 
                 return true;
             }
@@ -177,10 +144,9 @@ namespace WorksetOrchestrator
             if (workset != null)
                 return workset.Id;
 
-            // Workset doesn't exist, create it
             try
             {
-                Workset newWorkset = Workset.Create(_doc, worksetName);
+                var newWorkset = Workset.Create(_doc, worksetName);
                 LogMessage($"Created new workset: {worksetName}");
                 return newWorkset.Id;
             }
@@ -191,20 +157,27 @@ namespace WorksetOrchestrator
             }
         }
 
-        private void ExportRVTs(Dictionary<string, List<ElementId>> packageGroups, string destinationPath, bool overwrite)
+        private void ExportRVTs(Dictionary<string, List<ElementId>> packageGroups, string destinationPath, bool overwrite, bool exportQc)
         {
             string projectPrefix = System.IO.Path.GetFileNameWithoutExtension(_doc.PathName).Split('_')[0];
 
+            if (exportQc)
+            {
+                var qcElements = new FilteredElementCollector(_doc)
+                    .WhereElementIsNotElementType()
+                    .Where(e => e.WorksetId == GetOrCreateWorkset("DX_QC"))
+                    .Select(e => e.Id)
+                    .ToList();
+
+                if (qcElements.Any())
+                    packageGroups["QC"] = qcElements;
+            }
+
             foreach (var group in packageGroups)
             {
-                string packageCode = group.Key;
-                if (packageCode == "NO EXPORT")
-                    continue;
+                if (group.Key == "NO EXPORT") continue;
 
-                LogMessage($"Preparing export for package: {packageCode}");
-
-                // Create a new temporary Revit file for this export
-                string exportFileName = $"{projectPrefix}_{packageCode}_MO_Part_001_DX.rvt";
+                string exportFileName = $"{projectPrefix}_{group.Key}_MO_Part_001_DX.rvt";
                 string exportFilePath = System.IO.Path.Combine(destinationPath, exportFileName);
 
                 if (System.IO.File.Exists(exportFilePath) && !overwrite)
@@ -213,14 +186,12 @@ namespace WorksetOrchestrator
                     continue;
                 }
 
-                // Use SaveAs with option to create new file
-                SaveAsOptions options = new SaveAsOptions();
-                options.OverwriteExistingFile = overwrite;
-
                 try
                 {
-                    // This is a simplified approach - in production, you'd need to
-                    // create a new document and selectively copy elements
+                    SaveAsOptions options = new SaveAsOptions
+                    {
+                        OverwriteExistingFile = overwrite
+                    };
                     _doc.SaveAs(exportFilePath, options);
                     LogMessage($"Exported: {exportFileName}");
                 }

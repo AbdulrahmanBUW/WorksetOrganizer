@@ -22,8 +22,11 @@ namespace WorksetOrchestrator
                     return Result.Failed;
                 }
 
-                // Show the main form
-                MainForm mainForm = new MainForm(uiDoc);
+                // Pass the Revit main window handle to the WPF window for proper ownership
+                IntPtr revitHandle = uiApp.MainWindowHandle;
+
+                // Show the main form (modeless)
+                MainForm mainForm = new MainForm(uiDoc, revitHandle);
                 mainForm.Show();
 
                 return Result.Succeeded;
