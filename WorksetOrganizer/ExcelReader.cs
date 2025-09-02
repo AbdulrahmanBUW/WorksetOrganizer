@@ -14,17 +14,28 @@ namespace WorksetOrchestrator
             if (!File.Exists(excelFilePath))
                 throw new FileNotFoundException($"Excel file not found: {excelFilePath}");
 
-            // Set EPPlus license context (required for EPPlus 5.0+)
-            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
+            // EPPlus 4.x doesn't need LicenseContext - remove this line completely
             using (var package = new ExcelPackage(new FileInfo(excelFilePath)))
             {
                 if (package.Workbook.Worksheets.Count == 0)
                     throw new Exception("Excel file contains no worksheets.");
 
                 // Try to find the 'Mapping' worksheet, or use the first one
-                ExcelWorksheet worksheet = package.Workbook.Worksheets["Mapping"] ??
-                                         package.Workbook.Worksheets[0];
+                ExcelWorksheet worksheet = null;
+
+                // Case-insensitive search for 'Mapping' worksheet
+                foreach (var ws in package.Workbook.Worksheets)
+                {
+                    if (ws.Name.Equals("Mapping", StringComparison.OrdinalIgnoreCase))
+                    {
+                        worksheet = ws;
+                        break;
+                    }
+                }
+
+                // If no 'Mapping' worksheet found, use the first one
+                if (worksheet == null)
+                    worksheet = package.Workbook.Worksheets[1]; // EPPlus worksheets are 1-indexed
 
                 if (worksheet == null)
                     throw new Exception("No accessible worksheet found in Excel file.");
@@ -42,7 +53,8 @@ namespace WorksetOrchestrator
                 var headers = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 for (int col = 1; col <= colCount; col++)
                 {
-                    string headerValue = worksheet.Cells[1, col].Text?.Trim();
+                    var cellValue = worksheet.Cells[1, col].Value;
+                    string headerValue = cellValue?.ToString()?.Trim();
                     if (!string.IsNullOrEmpty(headerValue))
                         headers[headerValue] = col;
                 }
@@ -65,10 +77,10 @@ namespace WorksetOrchestrator
                 {
                     var record = new MappingRecord
                     {
-                        WorksetName = worksheet.Cells[row, headers["Workset Name"]].Text?.Trim(),
-                        SystemNameInModel = worksheet.Cells[row, headers["System Name in Model File"]].Text?.Trim(),
-                        SystemDescription = worksheet.Cells[row, headers["System Description"]].Text?.Trim(),
-                        ModelPackageCode = worksheet.Cells[row, headers["Model iFLS/Package Code"]].Text?.Trim()
+                        WorksetName = GetCellValue(worksheet, row, headers["Workset Name"]),
+                        SystemNameInModel = GetCellValue(worksheet, row, headers["System Name in Model File"]),
+                        SystemDescription = GetCellValue(worksheet, row, headers["System Description"]),
+                        ModelPackageCode = GetCellValue(worksheet, row, headers["Model iFLS/Package Code"])
                     };
 
                     // Only add records with valid workset name and system name (unless it's a special case)
@@ -84,6 +96,19 @@ namespace WorksetOrchestrator
             }
 
             return mappingList;
+        }
+
+        private static string GetCellValue(ExcelWorksheet worksheet, int row, int col)
+        {
+            try
+            {
+                var cellValue = worksheet.Cells[row, col].Value;
+                return cellValue?.ToString()?.Trim();
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
     }
 }
