@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
@@ -20,6 +19,7 @@ namespace WorksetOrchestrator
         public MainForm(UIDocument uiDoc, IntPtr revitMainWindowHandle)
         {
             InitializeComponent();
+
             _uiDoc = uiDoc;
             _orchestrator = new WorksetOrchestrator(uiDoc);
             _orchestrator.LogUpdated += OnLogUpdated;
@@ -48,9 +48,21 @@ namespace WorksetOrchestrator
                 // Owner window is optional
             }
 
+            // Initialize UI
+            txtStatus.Text = "Ready";
+            pbProgress.Value = 0;
+            pbProgress.IsIndeterminate = false;
+
             // Log initial information
-            LogMessage($"Document: {_uiDoc.Document.Title}");
-            LogMessage($"Workshared: {_uiDoc.Document.IsWorkshared}");
+            try
+            {
+                LogMessage($"Document: {_uiDoc.Document.Title}");
+                LogMessage($"Workshared: {_uiDoc.Document.IsWorkshared}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning reading document info: {ex.Message}");
+            }
         }
 
         protected override void OnClosed(EventArgs e)
@@ -67,6 +79,18 @@ namespace WorksetOrchestrator
             {
                 txtLog.AppendText(message + Environment.NewLine);
                 txtLog.ScrollToEnd();
+
+                // Keep the status line short and informative
+                if (!string.IsNullOrEmpty(message))
+                {
+                    // show the last log short text in status (trim timestamp)
+                    int hyphenIndex = message.IndexOf(" - ");
+                    string shortMsg = message;
+                    if (hyphenIndex >= 0 && hyphenIndex + 3 < message.Length)
+                        shortMsg = message.Substring(hyphenIndex + 3);
+
+                    txtStatus.Text = shortMsg.Length > 80 ? shortMsg.Substring(0, 77) + "..." : shortMsg;
+                }
             });
         }
 
@@ -124,9 +148,14 @@ namespace WorksetOrchestrator
                 return;
             }
 
+            // Disable UI while running
             btnRun.IsEnabled = false;
             btnCancel.Content = "Close";
             txtLog.Clear();
+
+            // Show progress
+            pbProgress.IsIndeterminate = true;
+            txtStatus.Text = "Initializing...";
 
             try
             {
@@ -150,41 +179,39 @@ namespace WorksetOrchestrator
 
                 // Raise the external event to execute in Revit context
                 LogMessage("Starting workset orchestration in Revit context...");
-                ExternalEventRequest request = _externalEvent.Raise();
+                _externalEvent.Raise();
 
-                if (request == ExternalEventRequest.Accepted)
+                // Wait for completion with timeout
+                await WaitForCompletionAsync();
+
+                // After the wait, update UI based on result
+                pbProgress.IsIndeterminate = false;
+                pbProgress.Value = 100;
+
+                if (_eventHandler.Success)
                 {
-                    // Wait for completion with timeout
-                    await WaitForCompletionAsync();
-
-                    if (_eventHandler.Success)
-                    {
-                        LogMessage("=== PROCESS COMPLETED SUCCESSFULLY ===");
-                        System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
-                            MessageBoxButton.OK, MessageBoxImage.Information);
-                    }
-                    else
-                    {
-                        LogMessage("=== PROCESS COMPLETED WITH ERRORS ===");
-                        if (_eventHandler.LastException != null)
-                        {
-                            LogMessage($"Last exception: {_eventHandler.LastException.Message}");
-                        }
-                        System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.",
-                            "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
+                    LogMessage("=== PROCESS COMPLETED SUCCESSFULLY ===");
+                    txtStatus.Text = "Completed successfully";
+                    System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
-                    LogMessage($"ERROR: Failed to raise external event. Request status: {request}");
-                    System.Windows.MessageBox.Show("Failed to start the process. Make sure Revit is active and the document is not in edit mode.",
-                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    LogMessage("=== PROCESS COMPLETED WITH ERRORS ===");
+                    txtStatus.Text = "Completed with errors";
+                    if (_eventHandler.LastException != null)
+                    {
+                        LogMessage($"Last exception: {_eventHandler.LastException.Message}");
+                    }
+                    System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.",
+                        "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)
             {
                 LogMessage($"ERROR: {ex.Message}");
                 LogMessage($"Stack Trace: {ex.StackTrace}");
+                txtStatus.Text = "Error";
                 System.Windows.MessageBox.Show($"An error occurred: {ex.Message}", "Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
@@ -192,6 +219,8 @@ namespace WorksetOrchestrator
             {
                 btnRun.IsEnabled = true;
                 btnCancel.Content = "Cancel";
+                pbProgress.IsIndeterminate = false;
+                pbProgress.Value = 0;
             }
         }
 
@@ -199,14 +228,28 @@ namespace WorksetOrchestrator
         {
             // Wait for the external event to complete with a reasonable timeout
             int maxWaitTime = 600000; // 10 minutes for large models
-            int checkInterval = 250; // 250ms
+            int checkInterval = 500; // 500ms
             int totalWaited = 0;
             int lastLogTime = 0;
+
+            // Use determinate progress while waiting (progress = elapsed / max)
+            pbProgress.IsIndeterminate = false;
+            pbProgress.Minimum = 0;
+            pbProgress.Maximum = maxWaitTime;
+            pbProgress.Value = 0;
+            txtStatus.Text = "Processing...";
 
             while (!_eventHandler.IsComplete && totalWaited < maxWaitTime)
             {
                 await Task.Delay(checkInterval);
                 totalWaited += checkInterval;
+
+                // Update progress bar
+                Dispatcher.Invoke(() =>
+                {
+                    if (pbProgress.Maximum > 0)
+                        pbProgress.Value = Math.Min(totalWaited, (int)pbProgress.Maximum);
+                });
 
                 // Log progress every 30 seconds
                 if (totalWaited - lastLogTime >= 30000)
@@ -222,6 +265,7 @@ namespace WorksetOrchestrator
             if (totalWaited >= maxWaitTime)
             {
                 LogMessage("WARNING: Operation timed out after 10 minutes.");
+                txtStatus.Text = "Timed out";
             }
         }
 

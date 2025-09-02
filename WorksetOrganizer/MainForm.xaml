@@ -1,48 +1,157 @@
 <Window x:Class="WorksetOrchestrator.MainForm"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Workset Orchestrator" Height="500" Width="600" WindowStartupLocation="CenterScreen">
-	<Grid Margin="10">
-		<Grid.RowDefinitions>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="*"/>
-			<RowDefinition Height="Auto"/>
-		</Grid.RowDefinitions>
+        Title="Workset Organizer - DEAXO GmbH" Height="540" Width="760" MinWidth="700" MinHeight="480"
+        WindowStartupLocation="CenterScreen" Background="#FFF4F6F8">
 
-		<Grid.ColumnDefinitions>
-			<ColumnDefinition Width="Auto"/>
-			<ColumnDefinition Width="*"/>
-			<ColumnDefinition Width="Auto"/>
-		</Grid.ColumnDefinitions>
+    <Window.Resources>
+        <!-- Basic reusable styles -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#22000000" BlurRadius="8" ShadowDepth="2"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-		<!-- Excel File Path -->
-		<Label Grid.Row="0" Grid.Column="0" Content="Excel File:" Margin="0,0,5,5"/>
-		<TextBox Grid.Row="0" Grid.Column="1" Name="txtExcelPath" Margin="0,0,5,5"/>
-		<Button Grid.Row="0" Grid.Column="2" Content="Browse..." Name="btnBrowseExcel" Click="BtnBrowseExcel_Click" Width="60" Margin="0,0,0,5"/>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="90" />
+            <Setter Property="Background" Value="#FF2D89EF" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#FF1B6FD8" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
 
-		<!-- Destination Folder -->
-		<Label Grid.Row="1" Grid.Column="0" Content="Destination:" Margin="0,0,5,5"/>
-		<TextBox Grid.Row="1" Grid.Column="1" Name="txtDestination" Margin="0,0,5,5"/>
-		<Button Grid.Row="1" Grid.Column="2" Content="Browse..." Name="btnBrowseDestination" Click="BtnBrowseDestination_Click" Width="60" Margin="0,0,0,5"/>
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="90" />
+            <Setter Property="Background" Value="#FFF0F4FA" />
+            <Setter Property="Foreground" Value="#FF333333" />
+            <Setter Property="BorderBrush" Value="#FFE0E6F0" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
 
-		<!-- Options -->
-		<CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Name="chkOverwrite" Content="Overwrite existing files?" Margin="0,10,0,5"/>
-		<CheckBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Name="chkExportQc" Content="Export DX_QC category?" Margin="0,0,0,10"/>
+        <Style TargetType="Label">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="#FF222222" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
 
-		<!-- Log Window -->
-		<Label Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Content="Log:"/>
-		<TextBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Name="txtLog"
-                 IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                 TextWrapping="Wrap" AcceptsReturn="True" Margin="0,0,0,10"/>
+        <Style TargetType="TextBox">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="6" />
+        </Style>
 
-		<!-- Buttons -->
-		<StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,0">
-			<Button Content="Run" Name="btnRun" Click="BtnRun_Click" Width="80" Margin="0,0,10,0"/>
-			<Button Content="Cancel" Name="btnCancel" Click="BtnCancel_Click" Width="80"/>
-		</StackPanel>
-	</Grid>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Style="{StaticResource Card}" Grid.Row="0" Background="#FF2D89EF" Padding="12" Margin="0,0,0,8">
+            <DockPanel>
+                <TextBlock Text="Workset Organizer" FontSize="18" FontWeight="Bold" Foreground="White" DockPanel.Dock="Left" />
+                <TextBlock Text="DEAXO GmbH" FontSize="12" Foreground="#CCFFFFFF" Margin="8,0,0,0" VerticalAlignment="Center" DockPanel.Dock="Left" />
+                <TextBlock Text="Manage worksets, extract packages, sync &amp; relinquish" FontSize="12" Foreground="#EEFFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center" DockPanel.Dock="Right" />
+            </DockPanel>
+        </Border>
+
+        <!-- Top section: file selectors and options -->
+        <Border Style="{StaticResource Card}" Grid.Row="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,8,0">
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Label Grid.Column="0" Content="Excel File:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="1" Name="txtExcelPath" VerticalAlignment="Center" Margin="0" Height="28"/>
+                        <Button Grid.Column="2" Name="btnBrowseExcel" Click="BtnBrowseExcel_Click" Content="Browse..." Width="80" Style="{StaticResource SecondaryButton}" />
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Label Grid.Column="0" Content="Destination:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="1" Name="txtDestination" VerticalAlignment="Center" Height="28" />
+                        <Button Grid.Column="2" Name="btnBrowseDestination" Click="BtnBrowseDestination_Click" Content="Browse..." Width="80" Style="{StaticResource SecondaryButton}" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <CheckBox Name="chkOverwrite" Content="Overwrite existing files?" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <CheckBox Name="chkExportQc" Content="Export DX_QC category?" VerticalAlignment="Center" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Quick stats panel -->
+                <StackPanel Grid.Column="1" Width="220" VerticalAlignment="Top">
+                    <TextBlock Text="Run Options" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <Border Background="#FFF8F9FB" CornerRadius="6" Padding="8">
+                        <StackPanel>
+                            <TextBlock Text="Document: " FontSize="12" Foreground="#99000000"/>
+                            <TextBlock Text="(opens with Revit document title at runtime)" FontSize="11" Foreground="#66000000" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main area: Log and progress -->
+        <Border Style="{StaticResource Card}" Grid.Row="2">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBox Grid.Row="0" Name="txtLog" IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         TextWrapping="Wrap" AcceptsReturn="True" FontFamily="Consolas" FontSize="12" Background="#FFFBFCFD"/>
+
+                <!-- Progress row: use Grid so ProgressBar can stretch -->
+                <Grid Grid.Row="1" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ProgressBar Name="pbProgress" Grid.Column="0" Height="14" VerticalAlignment="Center" Minimum="0" Maximum="100"
+                                 HorizontalAlignment="Stretch" Margin="0,0,12,0"/>
+                    <TextBlock Name="txtStatus" Grid.Column="1" Text="Ready" VerticalAlignment="Center" Margin="0,0,8,0" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Footer buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Name="btnRun" Click="BtnRun_Click" Content="Run" Style="{StaticResource PrimaryButton}"/>
+            <Button Name="btnCancel" Click="BtnCancel_Click" Content="Cancel" Style="{StaticResource SecondaryButton}"/>
+        </StackPanel>
+
+    </Grid>
 </Window>

@@ -19,19 +19,19 @@ namespace WorksetOrchestrator
             catch { } // Tab might already exist
 
             // Create a ribbon panel
-            RibbonPanel panel = application.CreateRibbonPanel(tabName, "Orchestration");
+            RibbonPanel panel = application.CreateRibbonPanel(tabName, "Organization");
 
             // Get assembly path
             string assemblyPath = Assembly.GetExecutingAssembly().Location;
 
             // Create push button
             PushButtonData buttonData = new PushButtonData(
-                "WorksetOrchestrator",
-                "Workset" + Environment.NewLine + "Orchestrator",
+                "WorksetOrganiser",
+                "Workset" + Environment.NewLine + "Organiser",
                 assemblyPath,
                 "WorksetOrchestrator.Command");
 
-            buttonData.ToolTip = "Orchestrate worksets based on Excel mapping and export RVTs.";
+            buttonData.ToolTip = "Organizes worksets based on Excel mapping and export RVTs.";
 
             // Add button to panel
             PushButton button = panel.AddItem(buttonData) as PushButton;
