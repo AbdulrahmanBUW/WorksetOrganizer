@@ -2,6 +2,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Forms; // Only for FolderBrowserDialog
@@ -12,6 +14,8 @@ namespace WorksetOrchestrator
     {
         private UIDocument _uiDoc;
         private WorksetOrchestrator _orchestrator;
+        private WorksetEventHandler _eventHandler;
+        private ExternalEvent _externalEvent;
 
         public MainForm(UIDocument uiDoc, IntPtr revitMainWindowHandle)
         {
@@ -19,6 +23,10 @@ namespace WorksetOrchestrator
             _uiDoc = uiDoc;
             _orchestrator = new WorksetOrchestrator(uiDoc);
             _orchestrator.LogUpdated += OnLogUpdated;
+
+            // Create external event handler for API calls
+            _eventHandler = new WorksetEventHandler();
+            _externalEvent = ExternalEvent.Create(_eventHandler);
 
             // Set Revit as owner window via handle if available
             try
@@ -39,6 +47,17 @@ namespace WorksetOrchestrator
             {
                 // Owner window is optional
             }
+
+            // Log initial information
+            LogMessage($"Document: {_uiDoc.Document.Title}");
+            LogMessage($"Workshared: {_uiDoc.Document.IsWorkshared}");
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            // Dispose of external event when window closes
+            _externalEvent?.Dispose();
+            base.OnClosed(e);
         }
 
         private void OnLogUpdated(object sender, string message)
@@ -59,10 +78,11 @@ namespace WorksetOrchestrator
                 Title = "Select Workset Mapping Excel File"
             };
 
-            bool? result = openFileDialog.ShowDialog(); // WPF OpenFileDialog returns bool?
+            bool? result = openFileDialog.ShowDialog();
             if (result == true)
             {
                 txtExcelPath.Text = openFileDialog.FileName;
+                LogMessage($"Selected Excel file: {System.IO.Path.GetFileName(openFileDialog.FileName)}");
             }
         }
 
@@ -76,11 +96,13 @@ namespace WorksetOrchestrator
             if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 txtDestination.Text = folderDialog.SelectedPath;
+                LogMessage($"Selected destination: {folderDialog.SelectedPath}");
             }
         }
 
-        private void BtnRun_Click(object sender, RoutedEventArgs e)
+        private async void BtnRun_Click(object sender, RoutedEventArgs e)
         {
+            // Validation
             if (string.IsNullOrEmpty(txtExcelPath.Text) || !File.Exists(txtExcelPath.Text))
             {
                 System.Windows.MessageBox.Show("Please select a valid Excel file.", "Error",
@@ -95,41 +117,111 @@ namespace WorksetOrchestrator
                 return;
             }
 
+            if (!_uiDoc.Document.IsWorkshared)
+            {
+                System.Windows.MessageBox.Show("The current document is not workshared. Please enable worksharing first.", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
             btnRun.IsEnabled = false;
+            btnCancel.Content = "Close";
             txtLog.Clear();
 
             try
             {
+                LogMessage("=== WORKSET ORCHESTRATION STARTED ===");
                 LogMessage("Reading Excel mapping file...");
+
                 var mapping = ExcelReader.ReadMapping(txtExcelPath.Text);
                 LogMessage($"Found {mapping.Count} mapping records.");
 
-                // Execute orchestrator synchronously on Revit thread
-                bool success = _orchestrator.Execute(mapping, txtDestination.Text,
+                // Log mapping summary
+                foreach (var record in mapping.Take(5)) // Show first 5 for verification
+                {
+                    LogMessage($"  Pattern: '{record.SystemNameInModel}' → Workset: '{record.WorksetName}' → Package: '{record.ModelPackageCode}'");
+                }
+                if (mapping.Count > 5)
+                    LogMessage($"  ... and {mapping.Count - 5} more records.");
+
+                // Set parameters for the external event handler
+                _eventHandler.SetParameters(_orchestrator, mapping, txtDestination.Text,
                     chkOverwrite.IsChecked == true, chkExportQc.IsChecked == true);
 
-                if (success)
+                // Raise the external event to execute in Revit context
+                LogMessage("Starting workset orchestration in Revit context...");
+                ExternalEventRequest request = _externalEvent.Raise();
+
+                if (request == ExternalEventRequest.Accepted)
                 {
-                    LogMessage("Process completed successfully!");
-                    System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    // Wait for completion with timeout
+                    await WaitForCompletionAsync();
+
+                    if (_eventHandler.Success)
+                    {
+                        LogMessage("=== PROCESS COMPLETED SUCCESSFULLY ===");
+                        System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        LogMessage("=== PROCESS COMPLETED WITH ERRORS ===");
+                        if (_eventHandler.LastException != null)
+                        {
+                            LogMessage($"Last exception: {_eventHandler.LastException.Message}");
+                        }
+                        System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.",
+                            "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
                 }
                 else
                 {
-                    LogMessage("Process completed with errors.");
-                    System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.",
-                        "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    LogMessage($"ERROR: Failed to raise external event. Request status: {request}");
+                    System.Windows.MessageBox.Show("Failed to start the process. Make sure Revit is active and the document is not in edit mode.",
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
                 LogMessage($"ERROR: {ex.Message}");
+                LogMessage($"Stack Trace: {ex.StackTrace}");
                 System.Windows.MessageBox.Show($"An error occurred: {ex.Message}", "Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
                 btnRun.IsEnabled = true;
+                btnCancel.Content = "Cancel";
+            }
+        }
+
+        private async Task WaitForCompletionAsync()
+        {
+            // Wait for the external event to complete with a reasonable timeout
+            int maxWaitTime = 600000; // 10 minutes for large models
+            int checkInterval = 250; // 250ms
+            int totalWaited = 0;
+            int lastLogTime = 0;
+
+            while (!_eventHandler.IsComplete && totalWaited < maxWaitTime)
+            {
+                await Task.Delay(checkInterval);
+                totalWaited += checkInterval;
+
+                // Log progress every 30 seconds
+                if (totalWaited - lastLogTime >= 30000)
+                {
+                    LogMessage($"Processing... ({totalWaited / 1000} seconds elapsed)");
+                    lastLogTime = totalWaited;
+                }
+
+                // Allow UI to update
+                System.Windows.Forms.Application.DoEvents();
+            }
+
+            if (totalWaited >= maxWaitTime)
+            {
+                LogMessage("WARNING: Operation timed out after 10 minutes.");
             }
         }
 
@@ -140,7 +232,8 @@ namespace WorksetOrchestrator
 
         private void LogMessage(string message)
         {
-            txtLog.AppendText($"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}");
+            string timestampedMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
+            txtLog.AppendText(timestampedMessage + Environment.NewLine);
             txtLog.ScrollToEnd();
         }
     }

@@ -96,6 +96,7 @@
     </Compile>
     <Compile Include="MappingRecord.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="WorksetEventHandler.cs" />
     <Compile Include="WorksetOrchestrator.cs" />
   </ItemGroup>
   <ItemGroup>
