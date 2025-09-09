@@ -2,7 +2,6 @@
 
 A powerful Revit add-in that automates MEP workset organization, model export, and template integration for streamlined project handover and standardization.
 
-![Workset Organizer Interface](docs/interface-preview.png)
 
 ## 🚀 Features
 
