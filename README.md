@@ -259,14 +259,11 @@ Please include:
 
 ### Pull Requests
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/new-feature`)
+2. Create feature branch
 3. Implement changes with appropriate tests
 4. Update documentation if needed
 5. Submit pull request with clear description
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🏢 Company Information
 
@@ -274,25 +271,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Product**: Workset Organizer for Autodesk Revit
 - **Version**: 1.0.0
 - **Support**: Contact BIM Coordination team
-
-## 📚 Documentation
-
-### Complete Documentation
-- [Workflow Document](docs/XXX_BIM_BA_Workflow_007_DX.md) - Complete workflow procedures
-- [Installation Guide](docs/installation.md) - Detailed installation instructions
-- [Configuration Guide](docs/configuration.md) - Excel mapping setup
-- [API Documentation](docs/api.md) - Developer reference
-
-### Quick Reference
-- [Excel Template](templates/WorkSet_Mapping.xlsx) - Standard mapping file template
-- [Pattern Examples](docs/pattern-examples.md) - Common naming patterns
-- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
-
-## 🔗 Related Projects
-
-- [Revit API Documentation](https://www.revitapidocs.com/)
-- [EPPlus Library](https://github.com/EPPlusSoftware/EPPlus)
-- [Revit Add-in Guidelines](https://help.autodesk.com/view/RVT/2023/ENU/?guid=Revit_API_Revit_API_Developers_Guide_html)
 
 ## 📈 Changelog
 
@@ -345,14 +323,6 @@ For critical project issues:
 2. Document exact error messages
 3. Note Revit version and model size
 4. Contact BIM coordination team immediately
-
----
-
-## 📞 Quick Contact
-
-**Issues?** Open a [GitHub Issue](../../issues)  
-**Questions?** Check [Documentation](docs/)  
-**Updates?** Watch this repository for releases
 
 ---
 
