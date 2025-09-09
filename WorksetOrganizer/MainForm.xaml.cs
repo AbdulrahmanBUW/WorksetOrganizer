@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Forms; // Only for FolderBrowserDialog
+using System.Collections.Generic;
 
 namespace WorksetOrchestrator
 {
@@ -15,6 +16,8 @@ namespace WorksetOrchestrator
         private WorksetOrchestrator _orchestrator;
         private WorksetEventHandler _eventHandler;
         private ExternalEvent _externalEvent;
+        private List<string> _extractedFiles = new List<string>();
+        private string _lastDestinationPath;
 
         public MainForm(UIDocument uiDoc, IntPtr revitMainWindowHandle)
         {
@@ -52,6 +55,7 @@ namespace WorksetOrchestrator
             txtStatus.Text = "Ready";
             pbProgress.Value = 0;
             pbProgress.IsIndeterminate = false;
+            btnIntegrateTemplate.Visibility = Visibility.Collapsed; // Initially hidden
 
             // Log initial information
             try
@@ -148,6 +152,11 @@ namespace WorksetOrchestrator
                 return;
             }
 
+            // Reset extracted files list and hide template button
+            _extractedFiles.Clear();
+            btnIntegrateTemplate.Visibility = Visibility.Collapsed;
+            _lastDestinationPath = txtDestination.Text;
+
             // Disable UI while running
             btnRun.IsEnabled = false;
             btnCancel.Content = "Close";
@@ -192,6 +201,18 @@ namespace WorksetOrchestrator
                 {
                     LogMessage("=== PROCESS COMPLETED SUCCESSFULLY ===");
                     txtStatus.Text = "Completed successfully";
+
+                    // Get list of extracted files for template integration
+                    _extractedFiles = GetExtractedFiles(txtDestination.Text);
+                    LogMessage($"Found {_extractedFiles.Count} extracted files for potential template integration.");
+
+                    // Show template integration button if there are extracted files
+                    if (_extractedFiles.Count > 0)
+                    {
+                        btnIntegrateTemplate.Visibility = Visibility.Visible;
+                        LogMessage("Click 'Integrate into Template' to copy extracted elements into a template file.");
+                    }
+
                     System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -222,6 +243,115 @@ namespace WorksetOrchestrator
                 pbProgress.IsIndeterminate = false;
                 pbProgress.Value = 0;
             }
+        }
+
+        private async void BtnIntegrateTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_extractedFiles.Count == 0)
+            {
+                System.Windows.MessageBox.Show("No extracted files found for template integration.", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // Ask user to select template file
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Revit Files (*.rvt)|*.rvt|All Files (*.*)|*.*",
+                Title = "Select Template File for Integration"
+            };
+
+            bool? result = openFileDialog.ShowDialog();
+            if (result != true)
+                return;
+
+            string templateFilePath = openFileDialog.FileName;
+            LogMessage($"Selected template file: {System.IO.Path.GetFileName(templateFilePath)}");
+
+            // Disable UI during integration
+            btnIntegrateTemplate.IsEnabled = false;
+            btnRun.IsEnabled = false;
+            btnCancel.Content = "Close";
+            pbProgress.IsIndeterminate = true;
+            txtStatus.Text = "Integrating into template...";
+
+            try
+            {
+                LogMessage("=== TEMPLATE INTEGRATION STARTED ===");
+                LogMessage($"Template file: {templateFilePath}");
+                LogMessage($"Extracted files to integrate: {_extractedFiles.Count}");
+
+                // Set parameters for template integration
+                _eventHandler.SetTemplateIntegrationParameters(_orchestrator, _extractedFiles,
+                    templateFilePath, _lastDestinationPath);
+
+                // Raise the external event to execute in Revit context
+                LogMessage("Starting template integration in Revit context...");
+                _externalEvent.Raise();
+
+                // Wait for completion
+                await WaitForCompletionAsync();
+
+                // Update UI based on result
+                pbProgress.IsIndeterminate = false;
+                pbProgress.Value = 100;
+
+                if (_eventHandler.Success)
+                {
+                    LogMessage("=== TEMPLATE INTEGRATION COMPLETED SUCCESSFULLY ===");
+                    txtStatus.Text = "Template integration completed";
+                    System.Windows.MessageBox.Show($"Template integration completed successfully!\n" +
+                        $"Integrated files are saved in the 'In Template' subfolder.", "Success",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    LogMessage("=== TEMPLATE INTEGRATION FAILED ===");
+                    txtStatus.Text = "Template integration failed";
+                    if (_eventHandler.LastException != null)
+                    {
+                        LogMessage($"Error: {_eventHandler.LastException.Message}");
+                    }
+                    System.Windows.MessageBox.Show("Template integration failed. Check the log for details.",
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR during template integration: {ex.Message}");
+                txtStatus.Text = "Template integration error";
+                System.Windows.MessageBox.Show($"An error occurred during template integration: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                btnIntegrateTemplate.IsEnabled = true;
+                btnRun.IsEnabled = true;
+                btnCancel.Content = "Cancel";
+                pbProgress.IsIndeterminate = false;
+                pbProgress.Value = 0;
+            }
+        }
+
+        private List<string> GetExtractedFiles(string destinationPath)
+        {
+            var extractedFiles = new List<string>();
+
+            try
+            {
+                if (Directory.Exists(destinationPath))
+                {
+                    // Look for RVT files that match the export pattern
+                    var rvtFiles = Directory.GetFiles(destinationPath, "*_DX.rvt", SearchOption.TopDirectoryOnly);
+                    extractedFiles.AddRange(rvtFiles);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Could not scan for extracted files: {ex.Message}");
+            }
+
+            return extractedFiles;
         }
 
         private async Task WaitForCompletionAsync()

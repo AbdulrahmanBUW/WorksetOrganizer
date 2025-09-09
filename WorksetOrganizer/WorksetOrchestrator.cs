@@ -136,6 +136,406 @@ namespace WorksetOrchestrator
             }
         }
 
+        /// <summary>
+        /// Template integration that preserves worksets in the exported files.
+        /// NOTE: preserving worksets requires the saved file to be a workshared (central) file.
+        /// </summary>
+        public bool IntegrateIntoTemplate(List<string> extractedFiles, string templateFilePath, string destinationPath)
+        {
+            try
+            {
+                LogMessage($"Starting template integration with {extractedFiles?.Count ?? 0} files...");
+                LogMessage($"Template file: {System.IO.Path.GetFileName(templateFilePath)}");
+
+                if (!File.Exists(templateFilePath))
+                {
+                    LogMessage($"ERROR: Template file not found: {templateFilePath}");
+                    return false;
+                }
+
+                // Create "In Template" subfolder
+                string templateOutputPath = System.IO.Path.Combine(destinationPath, "In Template");
+                if (!Directory.Exists(templateOutputPath))
+                {
+                    Directory.CreateDirectory(templateOutputPath);
+                    LogMessage($"Created 'In Template' directory: {templateOutputPath}");
+                }
+
+                var app = _uiDoc.Application.Application;
+                int processedCount = 0;
+
+                foreach (var extractedFilePath in extractedFiles)
+                {
+                    LogMessage($"=== Processing file {processedCount + 1}/{extractedFiles.Count}: {System.IO.Path.GetFileName(extractedFilePath)} ===");
+
+                    if (!File.Exists(extractedFilePath))
+                    {
+                        LogMessage($"ERROR: Extracted file not found: {extractedFilePath}. Skipping.");
+                        continue;
+                    }
+
+                    string tempTemplatePath = null;
+                    Document templateDoc = null;
+                    Document extractedDoc = null;
+
+                    try
+                    {
+                        // --- Create a fresh temporary copy of the template (per extracted file) ---
+                        tempTemplatePath = System.IO.Path.Combine(destinationPath, $"temp_template_{processedCount:000}_{Guid.NewGuid():N}.rvt");
+                        LogMessage($"Creating temporary template copy: {tempTemplatePath}");
+                        File.Copy(templateFilePath, tempTemplatePath, true);
+                        File.SetAttributes(tempTemplatePath, FileAttributes.Normal);
+
+                        // --- Open the temporary template. Try to DETACH AND PRESERVE worksets so template keeps workset structure ---
+                        LogMessage("Opening temporary template copy (attempting DetachAndPreserveWorksets)...");
+                        try
+                        {
+                            OpenOptions openOpts = new OpenOptions();
+
+                            try
+                            {
+                                // Prefer DetachAndPreserveWorksets so the opened doc keeps worksets
+                                openOpts.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets;
+                            }
+                            catch
+                            {
+                                // Some older API versions might not expose DetachFromCentralOption - ignore and fallback
+                            }
+
+                            ModelPath mp = null;
+                            try
+                            {
+                                mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(tempTemplatePath);
+                            }
+                            catch (Exception convEx)
+                            {
+                                LogMessage($"Warning: ModelPath conversion failed for '{tempTemplatePath}': {convEx.Message}");
+                                mp = null;
+                            }
+
+                            if (mp != null)
+                            {
+                                templateDoc = app.OpenDocumentFile(mp, openOpts);
+                            }
+                            else
+                            {
+                                // fallback to simple open if overload not available
+                                templateDoc = app.OpenDocumentFile(tempTemplatePath);
+                            }
+
+                            if (templateDoc == null)
+                            {
+                                LogMessage("Open returned null - falling back to simple OpenDocumentFile.");
+                                templateDoc = app.OpenDocumentFile(tempTemplatePath);
+                            }
+                        }
+                        catch (Exception openTempEx)
+                        {
+                            LogMessage($"WARNING: Opening temp template failed ({openTempEx.Message}). Trying regular open...");
+                            try { templateDoc = app.OpenDocumentFile(tempTemplatePath); }
+                            catch (Exception e2) { LogMessage($"ERROR opening temp template: {e2.Message}"); templateDoc = null; }
+                        }
+
+                        if (templateDoc == null)
+                        {
+                            LogMessage($"ERROR: Could not open temporary template copy: {tempTemplatePath}. Skipping file.");
+                            try { if (File.Exists(tempTemplatePath)) File.Delete(tempTemplatePath); } catch { }
+                            continue;
+                        }
+
+                        LogMessage($"Opened template copy: {templateDoc.Title} (IsWorkshared: {templateDoc.IsWorkshared})");
+
+                        // --- Open the extracted file (read) ---
+                        LogMessage("Opening extracted file for reading...");
+                        try
+                        {
+                            extractedDoc = app.OpenDocumentFile(extractedFilePath);
+                        }
+                        catch (Exception openExtractEx)
+                        {
+                            LogMessage($"ERROR opening extracted file: {openExtractEx.Message}");
+                            extractedDoc = null;
+                        }
+
+                        if (extractedDoc == null)
+                        {
+                            LogMessage($"ERROR: Could not open extracted file: {extractedFilePath}. Closing template and skipping.");
+                            try { templateDoc.Close(false); } catch { }
+                            try { if (File.Exists(tempTemplatePath)) File.Delete(tempTemplatePath); } catch { }
+                            continue;
+                        }
+
+                        LogMessage($"Opened extracted file: {extractedDoc.Title}");
+
+                        // --- Collect MEP elements from extracted file ---
+                        var mepElements = GetAllMepElementsFromDocument(extractedDoc);
+                        LogMessage($"Found {mepElements.Count} MEP elements in extracted file.");
+
+                        if (mepElements.Count == 0)
+                        {
+                            LogMessage("No MEP elements found - closing docs and moving to next file.");
+                            try { extractedDoc.Close(false); } catch { }
+                            try { templateDoc.Close(false); } catch { }
+                            try { if (File.Exists(tempTemplatePath)) File.Delete(tempTemplatePath); } catch { }
+                            processedCount++;
+                            continue;
+                        }
+
+                        // --- Copy MEP elements into the fresh templateDoc ---
+                        var elementIds = mepElements.Select(e => e.Id).ToList();
+
+                        LogMessage("Starting copy transaction on template copy...");
+                        using (Transaction t = new Transaction(templateDoc, "Copy MEP elements into temp template"))
+                        {
+                            t.Start();
+                            try
+                            {
+                                var copyOptions = new CopyPasteOptions();
+                                copyOptions.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
+
+                                var copied = ElementTransformUtils.CopyElements(
+                                    extractedDoc,
+                                    elementIds,
+                                    templateDoc,
+                                    Transform.Identity,
+                                    copyOptions);
+
+                                LogMessage($"Copied {copied?.Count ?? 0} elements into template copy.");
+                                t.Commit();
+                            }
+                            catch (Exception copyEx)
+                            {
+                                t.RollBack();
+                                LogMessage($"ERROR during copy: {copyEx.Message}");
+                                try { extractedDoc.Close(false); } catch { }
+                                try { templateDoc.Close(false); } catch { }
+                                try { if (File.Exists(tempTemplatePath)) File.Delete(tempTemplatePath); } catch { }
+                                continue;
+                            }
+                        }
+
+                        // --- If the templateDoc is workshared we may want to synchronize/relinquish (optional) ---
+                        if (templateDoc.IsWorkshared)
+                        {
+                            LogMessage("Template copy is workshared - attempting SyncWithCentral + relinquish (safe-wrapped)...");
+                            try
+                            {
+                                var transOpts = new TransactWithCentralOptions();
+                                transOpts.SetLockCallback(new SynchLockCallback());
+
+                                var syncOpts = new SynchronizeWithCentralOptions();
+                                var relOpts = new RelinquishOptions(true);
+                                syncOpts.SetRelinquishOptions(relOpts);
+                                syncOpts.SaveLocalAfter = false;
+
+                                templateDoc.SynchronizeWithCentral(transOpts, syncOpts);
+                                LogMessage("Synchronized and relinquished template copy.");
+                            }
+                            catch (Exception syncEx)
+                            {
+                                LogMessage($"WARNING: SyncWithCentral failed on template copy: {syncEx.Message} — continuing to save.");
+                            }
+                        }
+
+                        // --- Save the integrated file to the output location (In Template folder).
+                        // If templateDoc.IsWorkshared, we must set WorksharingSaveAsOptions.SaveAsCentral = true. ---
+                        string outputFileName = System.IO.Path.GetFileName(extractedFilePath);
+                        string outputFilePath = System.IO.Path.Combine(templateOutputPath, outputFileName);
+
+                        LogMessage($"Saving integrated file as: {outputFilePath}");
+                        try
+                        {
+                            var saveOpts = new SaveAsOptions { OverwriteExistingFile = true };
+
+                            if (templateDoc.IsWorkshared)
+                            {
+                                try
+                                {
+                                    var wsOpts = new WorksharingSaveAsOptions { SaveAsCentral = true };
+                                    saveOpts.SetWorksharingOptions(wsOpts);
+                                    LogMessage("WorksharingSaveAsOptions.SaveAsCentral = true set for SaveAs (preserving worksets).");
+                                }
+                                catch (Exception exWs)
+                                {
+                                    LogMessage($"Warning: Could not set WorksharingSaveAsOptions: {exWs.Message}");
+                                }
+                            }
+
+                            templateDoc.SaveAs(outputFilePath, saveOpts);
+                            LogMessage($"Successfully saved integrated file: {outputFilePath}");
+                        }
+                        catch (Exception saveEx)
+                        {
+                            LogMessage($"ERROR saving integrated file: {saveEx.Message}");
+                        }
+
+                        // --- Close both docs ---
+                        try { LogMessage("Closing extracted file..."); extractedDoc.Close(false); } catch (Exception cex) { LogMessage($"Warning closing extracted file: {cex.Message}"); }
+                        try { LogMessage("Closing template copy..."); templateDoc.Close(false); } catch (Exception cex) { LogMessage($"Warning closing template copy: {cex.Message}"); }
+
+                        // --- Remove temporary template file ---
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(tempTemplatePath) && File.Exists(tempTemplatePath))
+                            {
+                                File.SetAttributes(tempTemplatePath, FileAttributes.Normal);
+                                File.Delete(tempTemplatePath);
+                                LogMessage($"Deleted temporary template copy: {tempTemplatePath}");
+                            }
+                        }
+                        catch (Exception exDelete) { LogMessage($"Warning deleting temp template file: {exDelete.Message}"); }
+
+                        processedCount++;
+                        LogMessage($"Successfully processed {processedCount}/{extractedFiles.Count}");
+                    }
+                    catch (Exception fileEx)
+                    {
+                        LogMessage($"ERROR processing file '{System.IO.Path.GetFileName(extractedFilePath)}': {fileEx.Message}");
+                        LogMessage($"Stack trace: {fileEx.StackTrace}");
+                        try { if (extractedDoc != null) extractedDoc.Close(false); } catch { }
+                        try { if (templateDoc != null) templateDoc.Close(false); } catch { }
+                        try { if (!string.IsNullOrEmpty(tempTemplatePath) && File.Exists(tempTemplatePath)) File.Delete(tempTemplatePath); } catch { }
+                    }
+                } // foreach
+
+                LogMessage($"=== TEMPLATE INTEGRATION COMPLETED ===");
+                LogMessage($"Successfully processed {processedCount} files.");
+                LogMessage($"Output location: {templateOutputPath}");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR in template integration: {ex.Message}");
+                LogMessage($"Stack Trace: {ex.StackTrace}");
+                return false;
+            }
+        }
+
+
+
+        /// <summary>
+        /// Public helper to safely open a document (reuses already-open docs and reports whether this method opened it)
+        /// </summary>
+        public Document SafeOpenDocument(Application app, string filePath, out bool openedByUs)
+        {
+            openedByUs = false;
+
+            try
+            {
+                // Reuse document if already open in this Revit session
+                var alreadyOpen = app.Documents.Cast<Document>()
+                    .FirstOrDefault(d => string.Equals(d.PathName, filePath, StringComparison.OrdinalIgnoreCase));
+
+                if (alreadyOpen != null)
+                {
+                    LogMessage($"File already open in session - reusing Document: {Path.GetFileName(filePath)}");
+                    return alreadyOpen;
+                }
+
+                LogMessage($"Opening document via API: {filePath}");
+                var doc = app.OpenDocumentFile(filePath);
+
+                if (doc != null)
+                {
+                    openedByUs = true;
+                    LogMessage($"Opened document: {doc.Title}");
+                }
+                else
+                {
+                    LogMessage($"OpenDocumentFile returned null for {filePath}");
+                }
+
+                return doc;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR opening document '{filePath}': {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the default 3D view (the house icon view) from a document
+        /// </summary>
+        private View3D GetDefault3DView(Document doc)
+        {
+            try
+            {
+                // Find the default {3D} view - this is typically the view that opens when you click the house icon
+                var view3D = new FilteredElementCollector(doc)
+                    .OfClass(typeof(View3D))
+                    .Cast<View3D>()
+                    .FirstOrDefault(v => v.Name == "{3D}" ||
+                                        v.Name.Contains("3D") && v.IsTemplate == false);
+
+                // If no {3D} view found, get the first non-template 3D view
+                if (view3D == null)
+                {
+                    view3D = new FilteredElementCollector(doc)
+                        .OfClass(typeof(View3D))
+                        .Cast<View3D>()
+                        .FirstOrDefault(v => !v.IsTemplate);
+                }
+
+                return view3D;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error finding 3D view: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets all MEP elements from a specific document (not the main document)
+        /// </summary>
+        private List<Element> GetAllMepElementsFromDocument(Document doc)
+        {
+            var mepElements = new List<Element>();
+
+            // Get all MEP-related elements (same categories as main workflow)
+            var categories = new List<BuiltInCategory>
+            {
+                BuiltInCategory.OST_PipeFitting,
+                BuiltInCategory.OST_PipeAccessory,
+                BuiltInCategory.OST_PipeCurves,
+                BuiltInCategory.OST_DuctFitting,
+                BuiltInCategory.OST_DuctAccessory,
+                BuiltInCategory.OST_DuctCurves,
+                BuiltInCategory.OST_DuctTerminal,
+                BuiltInCategory.OST_MechanicalEquipment,
+                BuiltInCategory.OST_PlumbingFixtures,
+                BuiltInCategory.OST_Sprinklers,
+                BuiltInCategory.OST_ElectricalEquipment,
+                BuiltInCategory.OST_ElectricalFixtures,
+                BuiltInCategory.OST_LightingFixtures,
+                BuiltInCategory.OST_CableTray,
+                BuiltInCategory.OST_CableTrayFitting,
+                BuiltInCategory.OST_Conduit,
+                BuiltInCategory.OST_ConduitFitting
+            };
+
+            foreach (var category in categories)
+            {
+                try
+                {
+                    var collector = new FilteredElementCollector(doc)
+                        .OfCategory(category)
+                        .WhereElementIsNotElementType();
+
+                    mepElements.AddRange(collector);
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Warning: Could not collect category {category} from document: {ex.Message}");
+                }
+            }
+
+            LogMessage($"Collected {mepElements.Count} total MEP elements from document '{doc.Title}'.");
+            return mepElements;
+        }
+
         private List<Element> GetAllMepElements()
         {
             var mepElements = new List<Element>();
