@@ -44,6 +44,20 @@ namespace WorksetOrchestrator
                 }
 
                 var packageGroupMapping = new Dictionary<string, List<ElementId>>();
+                
+                var eltRecord = mapping.FirstOrDefault(m => m.WorksetName?.ToUpper() == "DX_ELT");
+                if (eltRecord == null)
+                {
+                    // Add a default ELT record if missing
+                    mapping.Add(new MappingRecord
+                    {
+                        WorksetName = "DX_ELT",
+                        SystemNameInModel = "ELT",
+                        SystemDescription = "Electrical Elements",
+                        ModelPackageCode = "ELT" // or whatever your code should be
+                    });
+                    LogMessage("Added default DX_ELT mapping record");
+                }
 
                 using (Transaction trans = new Transaction(_doc, "Process Workset Mapping"))
                 {
@@ -97,9 +111,23 @@ namespace WorksetOrchestrator
                         }
                     }
 
+
+
                     // Move remaining MEP elements to DX_QC
                     var allMepElementsAfterProcessing = GetAllMepElements();
                     var processedElementIds = packageGroupMapping.Values.SelectMany(x => x).ToHashSet();
+
+
+                    var cableTrays = allMepElementsAfterProcessing.Where(e =>
+                    e.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
+                    e.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_CableTrayFitting).ToList();
+
+                    LogMessage($"Found {cableTrays.Count} cable trays/fittings after processing");
+                    foreach (var ct in cableTrays.Take(5)) // Log first 5
+                    {
+                        bool isProcessed = processedElementIds.Contains(ct.Id);
+                        LogMessage($"  Cable Tray {ct.Id}: Processed = {isProcessed}");
+                    }
 
                     int orphanedCount = 0;
                     foreach (var element in allMepElementsAfterProcessing)
@@ -588,11 +616,42 @@ namespace WorksetOrchestrator
             string systemPattern = record.SystemNameInModel?.Trim();
             string systemDescription = record.SystemDescription?.Trim();
 
-            if (string.IsNullOrEmpty(systemPattern) || systemPattern == "-")
+            LogMessage($"Searching for elements matching workset '{record.WorksetName}' with pattern '{systemPattern}' in {elements.Count} elements...");
+
+            // Special handling for DX_ELT workset - check electrical elements first
+            if (record.WorksetName?.ToUpper() == "DX_ELT")
+            {
+                LogMessage($"Processing DX_ELT workset - checking for electrical elements");
+
+                foreach (var element in elements)
+                {
+                    if (IsElementElectricalType(element))
+                    {
+                        matchingElements.Add(element);
+                    }
+                }
+
+                LogMessage($"Found {matchingElements.Count} electrical elements for DX_ELT");
                 return matchingElements;
+            }
 
-            LogMessage($"Searching for pattern '{systemPattern}' in {elements.Count} elements...");
+            // Special handling for records with empty/null system patterns
+            if (string.IsNullOrEmpty(systemPattern) || systemPattern == "-")
+            {
+                LogMessage($"No system pattern provided for '{record.WorksetName}' - using category and parameter-based matching");
 
+                foreach (var element in elements)
+                {
+                    if (IsElementMatchingByCategory(element, record))
+                    {
+                        matchingElements.Add(element);
+                    }
+                }
+
+                return matchingElements;
+            }
+
+            // Standard pattern-based matching for elements with system names
             foreach (var element in elements)
             {
                 if (IsElementMatchingSystem(element, systemPattern, systemDescription))
@@ -604,21 +663,399 @@ namespace WorksetOrchestrator
             return matchingElements;
         }
 
+        private bool IsElementMatchingByCategory(Element element, MappingRecord record)
+        {
+            try
+            {
+                string worksetName = record.WorksetName?.ToUpper();
+                string description = record.SystemDescription?.ToUpper();
+
+                // Handle DX_ELT - Electrical elements (cable trays, busbars)
+                if (worksetName == "DX_ELT")
+                {
+                    if (IsElementElectricalType(element))
+                    {
+                        LogMessage($"  MATCH (Category-ELT): Element {element.Id} identified as electrical");
+                        return true;
+                    }
+                }
+
+                // Handle DX_STB - Structural elements
+                else if (worksetName == "DX_STB")
+                {
+                    if (IsElementStructuralType(element))
+                    {
+                        LogMessage($"  MATCH (Category-STB): Element {element.Id} identified as structural");
+                        return true;
+                    }
+                }
+
+                // Handle DX_RR - Cleanroom Partitions
+                else if (worksetName == "DX_RR")
+                {
+                    if (IsElementCleanroomPartition(element))
+                    {
+                        LogMessage($"  MATCH (Category-RR): Element {element.Id} identified as cleanroom partition");
+                        return true;
+                    }
+                }
+
+                // Handle DX_FND - Process Tool Pedestal
+                else if (worksetName == "DX_FND")
+                {
+                    if (IsElementFoundation(element))
+                    {
+                        LogMessage($"  MATCH (Category-FND): Element {element.Id} identified as foundation/pedestal");
+                        return true;
+                    }
+                }
+
+                // Generic parameter-based matching for other categories
+                else
+                {
+                    if (HasMatchingWorksetParameter(element, worksetName, description))
+                    {
+                        LogMessage($"  MATCH (Parameter): Element {element.Id} matched by workset parameter");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error in category matching for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+
+
+        private bool IsElementStructuralType(Element element)
+        {
+            try
+            {
+                // Check structural categories
+                var structuralCategories = new[]
+                {
+            BuiltInCategory.OST_StructuralFraming,
+            BuiltInCategory.OST_StructuralColumns,
+            BuiltInCategory.OST_StructuralFoundation,
+            BuiltInCategory.OST_StructuralFramingSystem,
+            BuiltInCategory.OST_StructuralStiffener,
+            BuiltInCategory.OST_StructuralTruss
+        };
+
+                var elementCategory = element.Category;
+                if (elementCategory != null)
+                {
+                    var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
+                    if (structuralCategories.Contains(categoryId))
+                    {
+                        LogMessage($"  Structural element {element.Id} - category match: {categoryId}");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking structural type for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool IsElementCleanroomPartition(Element element)
+        {
+            try
+            {
+                // Check for walls, generic models, or family instances that could be partitions
+                var partitionCategories = new[]
+                {
+            BuiltInCategory.OST_Walls,
+            BuiltInCategory.OST_GenericModel,
+            BuiltInCategory.OST_Doors,
+            BuiltInCategory.OST_Windows
+        };
+
+                var elementCategory = element.Category;
+                if (elementCategory != null)
+                {
+                    var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
+                    if (partitionCategories.Contains(categoryId))
+                    {
+                        return CheckCleanroomWorksetParameter(element);
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking cleanroom partition type for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool IsElementFoundation(Element element)
+        {
+            try
+            {
+                // Check for foundation-related categories
+                var foundationCategories = new[]
+                {
+            BuiltInCategory.OST_StructuralFoundation,
+            BuiltInCategory.OST_GenericModel,
+            BuiltInCategory.OST_MechanicalEquipment // Tool pedestals might be MEP equipment
+        };
+
+                var elementCategory = element.Category;
+                if (elementCategory != null)
+                {
+                    var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
+                    if (foundationCategories.Contains(categoryId))
+                    {
+                        return CheckFoundationWorksetParameter(element);
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking foundation type for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool CheckStructuralWorksetParameter(Element element)
+        {
+            try
+            {
+                // Get the element's type
+                ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
+
+                // Check type parameters first
+                if (elementType != null)
+                {
+                    var worksetParam = elementType.LookupParameter("Workset");
+                    if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                    {
+                        string worksetValue = worksetParam.AsString();
+                        LogMessage($"  Structural element {element.Id} has Workset parameter: '{worksetValue}'");
+
+                        var structuralKeywords = new[]
+                        {
+                    "Steel", "Structure", "Structural", "STB", "Frame", "Column", "Beam"
+                };
+
+                        bool isStructural = structuralKeywords.Any(keyword =>
+                            worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                        return isStructural;
+                    }
+                }
+
+                // Check instance parameters
+                var instanceWorksetParam = element.LookupParameter("Workset");
+                if (instanceWorksetParam != null && !string.IsNullOrEmpty(instanceWorksetParam.AsString()))
+                {
+                    string worksetValue = instanceWorksetParam.AsString();
+                    var structuralKeywords = new[] { "Steel", "Structure", "Structural", "STB" };
+
+                    return structuralKeywords.Any(keyword =>
+                        worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+
+                // Default to true for structural categories
+                var elementCategory = element.Category;
+                if (elementCategory != null)
+                {
+                    var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
+                    var pureStructuralCategories = new[]
+                    {
+                BuiltInCategory.OST_StructuralFraming,
+                BuiltInCategory.OST_StructuralColumns,
+                BuiltInCategory.OST_StructuralFoundation
+            };
+
+                    if (pureStructuralCategories.Contains(categoryId))
+                    {
+                        LogMessage($"  Structural element {element.Id} - pure structural category, defaulting to true");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking structural workset parameter for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool CheckCleanroomWorksetParameter(Element element)
+        {
+            try
+            {
+                // Check both type and instance parameters
+                var parameterSources = new List<Element> { element };
+
+                ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
+                if (elementType != null)
+                    parameterSources.Add(elementType);
+
+                foreach (var paramSource in parameterSources)
+                {
+                    var worksetParam = paramSource.LookupParameter("Workset");
+                    if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                    {
+                        string worksetValue = worksetParam.AsString();
+                        var cleanroomKeywords = new[]
+                        {
+                    "Cleanroom", "Partition", "RR", "Clean Room", "Wall"
+                };
+
+                        bool isCleanroom = cleanroomKeywords.Any(keyword =>
+                            worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                        if (isCleanroom)
+                        {
+                            LogMessage($"  Cleanroom element {element.Id} matched workset parameter: '{worksetValue}'");
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking cleanroom workset parameter for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool CheckFoundationWorksetParameter(Element element)
+        {
+            try
+            {
+                // Check both type and instance parameters
+                var parameterSources = new List<Element> { element };
+
+                ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
+                if (elementType != null)
+                    parameterSources.Add(elementType);
+
+                foreach (var paramSource in parameterSources)
+                {
+                    var worksetParam = paramSource.LookupParameter("Workset");
+                    if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                    {
+                        string worksetValue = worksetParam.AsString();
+                        var foundationKeywords = new[]
+                        {
+                    "Foundation", "Pedestal", "FND", "Tool", "Base"
+                };
+
+                        bool isFoundation = foundationKeywords.Any(keyword =>
+                            worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                        if (isFoundation)
+                        {
+                            LogMessage($"  Foundation element {element.Id} matched workset parameter: '{worksetValue}'");
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking foundation workset parameter for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool HasMatchingWorksetParameter(Element element, string targetWorksetName, string description)
+        {
+            try
+            {
+                // Check both type and instance parameters
+                var parameterSources = new List<Element> { element };
+
+                ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
+                if (elementType != null)
+                    parameterSources.Add(elementType);
+
+                foreach (var paramSource in parameterSources)
+                {
+                    var worksetParam = paramSource.LookupParameter("Workset");
+                    if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                    {
+                        string worksetValue = worksetParam.AsString();
+
+                        // Check if workset parameter contains target workset name (without DX_ prefix)
+                        string cleanTargetName = targetWorksetName.Replace("DX_", "");
+                        if (worksetValue.IndexOf(cleanTargetName, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            LogMessage($"  Element {element.Id} matched by workset parameter: '{worksetValue}' contains '{cleanTargetName}'");
+                            return true;
+                        }
+
+                        // Check against description keywords if provided
+                        if (!string.IsNullOrEmpty(description))
+                        {
+                            var descriptionWords = description.Split(new char[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                            foreach (var word in descriptionWords)
+                            {
+                                if (word.Length > 3 && worksetValue.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    LogMessage($"  Element {element.Id} matched by description word: '{word}' in workset parameter: '{worksetValue}'");
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking workset parameter for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
         private bool IsElementMatchingSystem(Element element, string systemPattern, string systemDescription)
         {
             try
             {
-                // Get all possible system-related parameters
+                // Special handling for ELT (Electrical) elements that don't have system names
+                if (IsElectricalPattern(systemPattern))
+                {
+                    if (IsElementElectricalType(element))
+                    {
+                        LogMessage($"  MATCH (Electrical): Element {element.Id} - Cable Tray/Busbar detected for ELT");
+                        return true;
+                    }
+                }
+
+                // Get all possible system-related parameters (existing logic)
                 var systemValues = new List<string>();
 
                 // Try different parameter approaches for different element types
                 var parameterIds = new List<BuiltInParameter>
-                {
-                    BuiltInParameter.RBS_SYSTEM_NAME_PARAM,           // System Name
-                    BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM, // System Classification  
-                    BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM,   // System Abbreviation
-                    BuiltInParameter.ELEM_TYPE_PARAM,                 // Element Type
-                };
+        {
+            BuiltInParameter.RBS_SYSTEM_NAME_PARAM,           // System Name
+            BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM, // System Classification  
+            BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM,   // System Abbreviation
+            BuiltInParameter.ELEM_TYPE_PARAM,                 // Element Type
+        };
 
                 foreach (var paramId in parameterIds)
                 {
@@ -672,7 +1109,6 @@ namespace WorksetOrchestrator
                 {
                     if (DoesSystemValueMatchPattern(systemValue, systemPattern))
                     {
-                        // Note: user removed detailed MATCH lines from log; keep a short message
                         LogMessage($"  MATCH: Element {element.Id} matched pattern.");
                         return true;
                     }
@@ -696,6 +1132,149 @@ namespace WorksetOrchestrator
             catch (Exception ex)
             {
                 LogMessage($"Warning: Error checking element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if the pattern indicates electrical elements (ELT, Electrical, etc.)
+        /// </summary>
+        private bool IsElectricalPattern(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return false;
+
+            var electricalKeywords = new[] { "ELT", "ELECTRICAL", "CABLE", "BUSBAR", "POWER", "LIGHTING" };
+
+            return electricalKeywords.Any(keyword =>
+                pattern.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        /// <summary>
+        /// Determines if an element is an electrical type (Cable Tray, Busbar, etc.)
+        /// that should go to ELT workset
+        /// </summary>
+        private bool IsElementElectricalType(Element element)
+        {
+            try
+            {
+                // Check if element is in electrical categories
+                var electricalCategories = new[]
+                {
+            BuiltInCategory.OST_CableTray,
+            BuiltInCategory.OST_CableTrayFitting,
+            BuiltInCategory.OST_Conduit,
+            BuiltInCategory.OST_ConduitFitting,
+            BuiltInCategory.OST_ElectricalEquipment,
+            BuiltInCategory.OST_ElectricalFixtures,
+            BuiltInCategory.OST_LightingFixtures
+        };
+
+                var elementCategory = element.Category;
+                if (elementCategory != null)
+                {
+                    var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
+                    if (electricalCategories.Contains(categoryId))
+                    {
+                        // Additional check for cable trays using the Workset type parameter
+                        if (categoryId == BuiltInCategory.OST_CableTray ||
+                            categoryId == BuiltInCategory.OST_CableTrayFitting)
+                        {
+                            return CheckCableTrayWorksetParameter(element);
+                        }
+
+                        // For other electrical elements, include them by default
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking electrical type for element {element.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if a Cable Tray element has the correct Workset type parameter
+        /// </summary>
+        private bool CheckCableTrayWorksetParameter(Element element)
+        {
+            try
+            {
+                // Get the element's type
+                ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
+                if (elementType == null)
+                    return true; // Default to electrical if we can't get the type
+
+                // Look for "Workset" parameter in type parameters
+                var worksetParam = elementType.LookupParameter("Workset");
+                if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                {
+                    string worksetValue = worksetParam.AsString();
+                    LogMessage($"  Cable Tray/Fitting {element.Id} has Workset parameter: '{worksetValue}'");
+
+                    // Check if it explicitly excludes electrical (rare case)
+                    var nonElectricalKeywords = new[] { "Fire", "HVAC", "Plumbing", "NOT ELECTRICAL" };
+
+                    bool isNonElectrical = nonElectricalKeywords.Any(keyword =>
+                        worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                    // If explicitly non-electrical, return false; otherwise assume electrical
+                    return !isNonElectrical;
+                }
+
+                // If no Workset parameter found, default to true for cable trays
+                LogMessage($"  Cable Tray/Fitting {element.Id} - no Workset parameter found, defaulting to electrical");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking cable tray workset parameter for element {element.Id}: {ex.Message}");
+                return true; // Default to electrical if we can't determine
+            }
+        }
+
+        /// <summary>
+        /// Checks family instance for electrical workset parameters
+        /// </summary>
+        private bool CheckFamilyInstanceWorksetParameter(FamilyInstance familyInstance)
+        {
+            try
+            {
+                // Check instance parameters first
+                var worksetParam = familyInstance.LookupParameter("Workset");
+                if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                {
+                    string worksetValue = worksetParam.AsString();
+                    var electricalKeywords = new[] { "Cable", "Electrical", "Power", "ELT", "Busbar" };
+
+                    return electricalKeywords.Any(keyword =>
+                        worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+                }
+
+                // Check type parameters
+                ElementType elementType = familyInstance.Document.GetElement(familyInstance.GetTypeId()) as ElementType;
+                if (elementType != null)
+                {
+                    var typeWorksetParam = elementType.LookupParameter("Workset");
+                    if (typeWorksetParam != null && !string.IsNullOrEmpty(typeWorksetParam.AsString()))
+                    {
+                        string worksetValue = typeWorksetParam.AsString();
+                        var electricalKeywords = new[] { "Cable", "Electrical", "Power", "ELT", "Busbar" };
+
+                        return electricalKeywords.Any(keyword =>
+                            worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking family instance workset parameter for element {familyInstance.Id}: {ex.Message}");
                 return false;
             }
         }
