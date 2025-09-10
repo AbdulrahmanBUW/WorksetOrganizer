@@ -1,309 +1,247 @@
 # Workset Organizer for Autodesk Revit
 
-A powerful Revit add-in that automates MEP workset organization, model export, and template integration for streamlined project handover and standardization.
+**Version 1.0.0** | **DEAXO GmbH**
 
+A Revit add-in for MEP workset management, model extraction, and project deliverable generation.
 
-##  Features
+## Overview
 
-### Core Functionality
-- **Automated Workset Organization**: Intelligently assigns MEP elements to worksets based on Excel-defined patterns
-- **System-Specific Exports**: Creates clean, package-specific Revit files for subcontractor handover
-- **Template Integration**: Merges exported MEP elements into standardized project templates
-- **Quality Control**: Automatically manages orphaned elements in dedicated QC worksets
-- **Comprehensive Logging**: Real-time process monitoring with detailed operation logs
+The Workset Organizer handles BIM coordination workflows with two operation modes: quality-controlled element organization using Excel mapping, and direct workset extraction. Built for projects requiring consistent deliverables and workset management across disciplines.
 
-### Supported MEP Systems
-- **Piping**: Fittings, Accessories, Curves & Systems
-- **HVAC**: Ducts, Fittings, Terminals & Equipment
-- **Electrical**: Equipment, Fixtures, Lighting, Cable Trays
-- **Plumbing**: Fixtures, Sprinklers & Accessories
-- **Mechanical**: All MEP equipment categories
+## Features
 
-##  Requirements
+### Operation Modes
+
+**QC Check & Extraction**
+- Excel-based element categorization using pattern matching
+- Workset assignment based on system names
+- Quality control for unassigned elements
+- Export generation for subcontractor packages
+
+**Extract Worksets**
+- Direct extraction of existing worksets
+- Maintains current workset structure
+- Applies iFLS codes for standard naming
+- No Excel mapping required
+
+### Element Handling
+
+Processes MEP systems (piping, ducting, electrical), structural components, generic models, and specialty equipment. Pattern recognition handles system naming conventions while maintaining element relationships during extraction.
+
+### Template Integration
+
+Integrates extracted elements into project templates while preserving workset assignments and system relationships.
+
+## Requirements
 
 ### Software
-- **Autodesk Revit**: 2023 or later
-- **.NET Framework**: 4.8+
-- **Windows**: 10/11 (64-bit)
-- **Microsoft Excel**: For mapping configuration
+- Autodesk Revit 2023 or later
+- Microsoft .NET Framework 4.8
+- Windows 10/11 (64-bit)
+- Microsoft Excel (for QC mode)
 
 ### Hardware
-- **RAM**: 8GB minimum, 16GB+ recommended
-- **Storage**: 1GB+ free space for exports
-- **CPU**: Multi-core processor recommended
+- 8GB RAM minimum (16GB recommended)
+- 1GB free disk space
+- Multi-core processor recommended
 
-## 🔧 Installation
+## Installation
 
-### Quick Install
-1. Extract files to: `C:\ProgramData\Autodesk\Revit\Addins\2023\`
-2. Restart Revit
-3. Look for **Workset Tools** tab or **External Tools** → **Workset Orchestrator**
+### Setup
+1. Copy files to Revit add-ins folder:
+   ```
+   C:\ProgramData\Autodesk\Revit\Addins\2023\
+   ```
+2. Required files:
+   - `WorksetOrganizer.dll`
+   - `WorksetOrganizer.addin`
+3. Restart Revit
 
-### Manual Installation
-```bash
-# Download required files
-WorksetOrganizer.dll
-WorksetOrganizer.addin
+### Access
+Find the tool in **Workset Tools** ribbon or **External Tools** → **Workset Orchestrator**
 
-# Copy to Revit add-ins directory
-C:\ProgramData\Autodesk\Revit\Addins\2023\
+## Configuration
 
-# Verify installation
-# Launch Revit and check for Workset Tools ribbon tab
-```
+### QC Mode: Excel Mapping File
 
-##  Quick Start
-
-### 1. Prepare Excel Mapping File
-Create an Excel file with a "Mapping" worksheet containing:
+Create Excel file with "Mapping" worksheet:
 
 | Workset Name | System Name in Model File | System Description | Model iFLS/Package Code |
 |--------------|---------------------------|-------------------|------------------------|
-| HW_Supply_01 | HWS-xxx | Hot Water Supply | HWS |
-| CW_Supply_01 | CWS-xxx | Cold Water Supply | CWS |
-| HVAC_Supply_01 | HVAC-SUP-xx | HVAC Supply Air | HVAC-SUP |
+| DX_HW_Supply_01 | HWS-xxx | Hot Water Supply | HWS |
+| DX_CW_Supply_01 | CWS-xxx | Cold Water Supply | CWS |
+| DX_ELT | ELT | Electrical Systems | ELT |
 
-### 2. Launch Plugin
-- Open workshared Revit document
-- Navigate to **Workset Tools** → **Workset Organizer**
-- Or use **External Tools** → **Workset Orchestrator**
+**Pattern Options:**
+- `x` = single digit
+- `xx` = 1-3 digits  
+- `xxx` = 2-3 digits
+- `*` = any characters
+- `NO EXPORT` = organize but don't export
 
-### 3. Configure and Run
-1. Select Excel mapping file
-2. Choose export destination folder
-3. Set options (overwrite files, export QC)
-4. Click **Run**
+### Extract Mode: Built-in iFLS Codes
 
-### 4. Template Integration (Optional)
-1. After successful export, click **Integrate into Template**
+| Workset | iFLS Code | Description |
+|---------|-----------|-------------|
+| DX_ELT | E-X | Electrical |
+| DX_CHM | C-S | Chemical Systems |
+| DX_PAW | S-D | Process Air & Water |
+| DX_STB | S-T | Structural |
+
+## Usage
+
+### QC Check & Extraction
+
+1. **Setup**
+   - Open workshared Revit model
+   - Prepare Excel mapping file
+   - Set destination folder
+
+2. **Run Process**
+   - Start add-in, select QC mode
+   - Browse to Excel file
+   - Choose export options
+   - Click "QC Check & Extraction"
+
+3. **Review Results**
+   - Check processing log
+   - Verify exported files
+   - Validate element assignments
+
+### Extract Worksets
+
+1. **Preparation**
+   - Switch to Extract mode
+   - Set destination folder
+   - Confirm workset detection
+
+2. **Execute**
+   - Click "Extract Worksets"
+   - Monitor progress
+   - Review generated files
+
+3. **Validation**
+   - Check extraction log
+   - Confirm file naming
+   - Verify workset preservation
+
+### Template Integration
+
+After export completion:
+1. Click "Integrate into Template"
 2. Select template file
-3. Integration creates files in "In Template" subfolder
+3. Review integrated files in "In Template" folder
 
-##  Pattern Matching
+## File Naming
 
-### Wildcard Patterns
-- `x` → Single digit (0-9)
-- `xx` → 1-3 digits  
-- `xxx` → 2-3 digits
-- `*` → Any characters
-
-### Examples
-```
-HWS-xxx     → Matches: HWS-001, HWS-012, HWS-123
-CWS-xx      → Matches: CWS-1, CWS-12, CWS-123  
-HVAC-*      → Matches: HVAC-Supply-A, HVAC-Return-B
-```
-
-### Special Codes
-- `NO EXPORT` → Organize elements but skip export
-
-##  Project Structure
-
-```
-WorksetOrganizer/
-├── App.cs                    # Revit application entry point
-├── Command.cs                # External command implementation
-├── MainForm.xaml            # WPF user interface
-├── MainForm.xaml.cs         # UI logic and event handling
-├── WorksetOrchestrator.cs   # Core orchestration logic
-├── ExcelReader.cs           # Excel file processing
-├── MappingRecord.cs         # Data model for mapping
-├── WorksetEventHandler.cs   # External event handling
-├── Properties/
-│   └── AssemblyInfo.cs      # Assembly information
-├── packages.config          # NuGet package references
-├── WorksetOrganizer.csproj  # Project file
-└── app.config              # Application configuration
-```
-
-##  Workflow Process
-
-### Phase 1: Organization
-1. **Element Collection**: Gathers all MEP elements from model
-2. **Pattern Matching**: Matches elements to patterns using system names
-3. **Workset Assignment**: Moves elements to appropriate worksets
-4. **QC Processing**: Assigns orphaned elements to DX_QC workset
-
-### Phase 2: Export
-1. **Synchronization**: Syncs with central and relinquishes ownership
-2. **Package Creation**: Creates new documents per package
-3. **Element Transfer**: Copies specific elements using Revit API
-4. **File Generation**: Saves clean package-specific files
-
-### Phase 3: Template Integration
-1. **Template Processing**: Opens template for each export file
-2. **Element Integration**: Copies MEP elements into template
-3. **Workset Preservation**: Maintains workset structure
-4. **Output Generation**: Saves integrated files with standards
-
-## 🛠️ Configuration
-
-### Excel Mapping File Format
-```excel
-Required Headers:
-- Workset Name (text)
-- System Name in Model File (pattern)
-- System Description (optional text)
-- Model iFLS/Package Code (export identifier)
-
-Worksheet Name: "Mapping" (case-insensitive)
-File Format: .xlsx
-```
-
-### Export File Naming
-```
-{ProjectPrefix}_{PackageCode}_MO_Part_001_DX.rvt
+Format: `{ProjectPrefix}_{iFLSCode}_MO_Part_001_DX.rvt`
 
 Examples:
-INFINEON_HWS_MO_Part_001_DX.rvt
-INFINEON_CWS_MO_Part_001_DX.rvt
-INFINEON_QC_MO_Part_001_DX.rvt
-```
+- `CMPP64-47_HWS_MO_Part_001_DX.rvt`
+- `CMPP64-47_E-X_MO_Part_001_DX.rvt`
+- `CMPP64-47_QC_MO_Part_001_DX.rvt`
 
-##  Performance
+## Performance
 
-### Typical Processing Times
-- **Small Models** (< 1000 elements): 2-5 minutes
-- **Medium Models** (1000-5000 elements): 5-15 minutes  
-- **Large Models** (5000+ elements): 15-30 minutes
-- **Template Integration**: +50% additional time
+### Processing Time
+- Small models (<1,000 elements): 2-5 minutes
+- Medium models (1,000-5,000 elements): 5-15 minutes
+- Large models (>5,000 elements): 15-30 minutes
+- Template integration: adds 50% to processing time
 
 ### Memory Usage
-- **Base Usage**: 100-200MB
-- **Per Export**: 50-100MB additional
-- **Peak Usage**: Up to 2GB for very large models
+- Base: 100-200MB
+- Per export: 50-100MB additional
+- Large models: up to 2GB peak usage
 
-##  Troubleshooting
+## Troubleshooting
 
-### Common Issues
+### Common Problems
 
-#### Plugin Not Visible
-- Verify installation path: `C:\ProgramData\Autodesk\Revit\Addins\2023\`
-- Check both `.dll` and `.addin` files are present
+**Add-in Not Found**
+- Check file location in correct Revit add-ins folder
+- Verify both .dll and .addin files present
 - Run Revit as administrator
-- Try **External Tools** → **Workset Orchestrator**
+- Look under External Tools menu
 
-#### Excel File Errors
-- Use `.xlsx` format (not `.xls`)
-- Ensure "Mapping" worksheet exists
-- Verify required column headers
-- Close Excel before running plugin
+**Excel Errors**
+- Use .xlsx format only
+- Include "Mapping" worksheet
+- Match required column headers exactly
+- Close Excel before running
 
-#### Export Failures
-- Ensure document is workshared
-- Check available disk space (1GB+ required)
-- Verify write permissions for destination folder
-- Close other Revit sessions to free memory
+**Export Failures**
+- Ensure model has worksharing enabled
+- Check disk space (1GB+ needed)
+- Verify folder write permissions
+- Close other Revit sessions
 
-#### Template Integration Issues
-- Verify template file is accessible and not corrupted
-- Ensure sufficient system memory (8GB+ recommended)
-- Check that exported files exist before integration
-- Monitor log for specific error messages
+**Memory Issues**
+- Close unnecessary programs
+- Use 64-bit Revit version
+- Process smaller batches for large models
 
-### Log File Analysis
-Check `WorksetOrchestrationLog.txt` in destination folder for detailed error information:
-- **"ERROR"** entries indicate issues requiring attention
-- **"WARNING"** entries are non-critical but worth reviewing
-- **"PROCESS COMPLETED SUCCESSFULLY"** confirms successful completion
+### Log Files
 
-##  Development
+Check these files in destination folder:
+- `WorksetOrchestrationLog.txt` (QC mode)
+- `WorksetExtractionLog.txt` (Extract mode)
 
-### Building from Source
+**Log Types:**
+- ERROR: Problems requiring action
+- WARNING: Issues to review
+- INFO: Normal operation messages
+
+## Technical Details
+
+### Architecture
+- **WorksetOrchestrator.cs**: Main processing logic
+- **ExcelReader.cs**: Excel file handling
+- **WorksetEventHandler.cs**: Revit API integration
+- **MainForm.xaml**: User interface
+
+### Dependencies
+- EPPlus 4.5.3.3 (Excel processing)
+- Revit API 2023
+- WPF (user interface)
+- .NET Framework 4.8
+
+### Pattern Matching
+The system uses regular expressions to match system names against Excel patterns. For electrical elements without system names, it identifies elements by category (cable trays, electrical equipment, etc.).
+
+### Workset Management
+Creates new worksets as needed and moves elements using Revit's workset parameter. Maintains element relationships during copy operations between documents.
+
+## Development
+
+### Build Requirements
+- Visual Studio 2019/2022
+- .NET Framework 4.8 SDK
+- Revit 2023 SDK
+
+### Building
 ```bash
-# Prerequisites
-Visual Studio 2019/2022
-.NET Framework 4.8 SDK
-Revit 2023 SDK
-
-# Clone repository
-git clone https://github.com/your-org/workset-organizer.git
+git clone [repository]
 cd workset-organizer
-
-# Restore NuGet packages
 nuget restore
-
-# Build solution
 msbuild WorksetOrganizer.sln /p:Configuration=Release
 ```
 
-### Development Setup
-1. Install Revit 2023 and SDK
-2. Clone repository to local machine
-3. Update Revit API references in project file
-4. Build and copy output to Revit add-ins folder
-5. Launch Revit for testing
+Copy output files to Revit add-ins folder for testing.
 
-### Dependencies
-- **EPPlus 4.5.3.3**: Excel file processing
-- **Revit API 2023**: Core Revit integration
-- **WPF**: User interface framework
-- **.NET Framework 4.8**: Runtime platform
+## Support
 
-### Bug Reports
-Please include:
-- Revit version and build number
-- Plugin version
-- Excel mapping file (if relevant)
-- Complete log file from failed operation
-- Steps to reproduce the issue
+### Contact
+- BIM Coordination Team: Technical support
+- Development Team: Code issues and enhancements
 
-### Feature Requests
-1. Open an issue describing the feature
-2. Include use case and business justification
-3. Provide mockups or examples if applicable
-4. Discuss implementation approach
-
-### Pull Requests
-1. Fork the repository
-2. Create feature branch
-3. Implement changes with appropriate tests
-4. Update documentation if needed
-5. Submit pull request with clear description
-
-
-##  Company Information
-
-**DEAXO GmbH**
-- **Product**: Workset Organizer for Autodesk Revit
-- **Version**: 1.0.8
-- **Support**: Contact BIM Coordination team
-
-##  Roadmap
-
-### Planned Features
-- **Multi-language Support**: Interface localization
-- **Advanced Filtering**: Custom element selection criteria
-- **Batch Processing**: Multiple project processing
-- **Cloud Integration**: SharePoint/BIM 360 connectivity
-- **Reporting Dashboard**: Analytics and insights
-- **Custom Templates**: User-defined export templates
-
-### Performance Improvements
-- **Parallel Processing**: Multi-threaded operations
-- **Memory Optimization**: Reduced memory footprint
-- **Incremental Updates**: Process only changed elements
-- **Background Processing**: Non-blocking operations
-
-##  Support
-
-### Internal Support Contacts
-- **BIM Coordinator**: Abdul Rahman
-- **BIM Manager**: Vital Kavaliou
-
-### Self-Service Resources
-- Check log files in destination folder
-- Review troubleshooting section above
-- Consult workflow documentation
-- Verify Excel mapping file format
-
-### Emergency Support
-For critical project issues:
-1. Collect all relevant log files
-2. Document exact error messages
-3. Note Revit version and model size
-4. Contact BIM coordination team immediately
+### Resources
+- Check log files for error details
+- Review Excel mapping format
+- Verify workset naming conventions
+- Confirm file permissions
 
 ---
 
-*Built with ❤️ by the DEAXO GmbH BIM Team*
+**DEAXO GmbH**  
+*Developed by the BIM Team with <3*
