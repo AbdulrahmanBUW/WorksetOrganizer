@@ -15,6 +15,52 @@ namespace WorksetOrchestrator
         private Document _doc;
         private UIDocument _uiDoc;
         private StringBuilder _log = new StringBuilder();
+        /// <summary>
+        /// Mapping of workset names to iFLS codes
+        /// </summary>
+        private Dictionary<string, string> GetWorksetToiFlsMapping()
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        {"DX_BDA", "B-D"},
+        {"DX_CDA", "D-D"},
+        {"DX_CHM", "C-S"},
+        {"DX_CKE", "C-L"},
+        {"DX_ELT", "E-X"},
+        {"DX_EXH", "A-X"},
+        {"DX_PAW", "S-D"},
+        {"DX_PG", "G-B"},
+        {"DX_PKW", "P-D"},
+        {"DX_PS", "G-S"},
+        {"DX_PWI", "U-D"},
+        {"DX_VAC", "V-D"},
+        {"DX_SLUR", "M-S"},
+        {"DX_STB", "S-T"},
+        {"DX_UPW", "U-D"},
+        {"DX_PVAC", "V-V"},
+        {"DX_RR", "R-R"},
+        {"DX_FND", "F-D"},
+        {"DX_Sub-tool", "S-BT"},
+        {"DX_Tool", "T-L"}
+    };
+        }
+
+        /// <summary>
+        /// Get iFLS code for a workset name
+        /// </summary>
+        private string GetIflsCodeForWorkset(string worksetName)
+        {
+            var mapping = GetWorksetToiFlsMapping();
+
+            if (mapping.TryGetValue(worksetName, out string iflsCode))
+            {
+                return iflsCode;
+            }
+
+            // If no mapping found, create a default code
+            LogMessage($"Warning: No iFLS mapping found for workset '{worksetName}', using default");
+            return worksetName.Replace("DX_", "").Substring(0, Math.Min(3, worksetName.Replace("DX_", "").Length));
+        }
 
         public event EventHandler<string> LogUpdated;
 
@@ -314,9 +360,14 @@ namespace WorksetOrchestrator
         BuiltInCategory.OST_Doors,
         BuiltInCategory.OST_Windows,
         
-        // Generic and Specialty
+        // Generic and Specialty - ENSURE THESE ARE INCLUDED
         BuiltInCategory.OST_GenericModel,
-        BuiltInCategory.OST_SpecialityEquipment
+        BuiltInCategory.OST_SpecialityEquipment,
+        
+        // Additional categories that might contain Generic Models
+        BuiltInCategory.OST_Mass,
+        BuiltInCategory.OST_Furniture,
+        BuiltInCategory.OST_FurnitureSystems
     };
 
             foreach (var element in elements)
@@ -329,7 +380,18 @@ namespace WorksetOrchestrator
                         if (relevantCategories.Contains(categoryId))
                         {
                             relevantElements.Add(element);
+                            // Debug log for Generic Models specifically
+                            if (categoryId == BuiltInCategory.OST_GenericModel)
+                            {
+                                LogMessage($"    Found Generic Model: {element.Id}");
+                            }
                         }
+                    }
+                    else
+                    {
+                        // Include elements without categories (they might be important)
+                        LogMessage($"    Found element without category: {element.Id} - including anyway");
+                        relevantElements.Add(element);
                     }
                 }
                 catch (Exception ex)
@@ -342,8 +404,97 @@ namespace WorksetOrchestrator
         }
 
         /// <summary>
-        /// Export worksets as individual RVT files
-        /// Similar to ExportRVTs but organized by workset instead of by mapping
+        /// Create workset in target document and assign elements to it
+        /// </summary>
+        private void AssignElementsToWorkset(Document targetDoc, List<ElementId> copiedElementIds, string worksetName)
+        {
+            if (copiedElementIds == null || !copiedElementIds.Any())
+                return;
+
+            try
+            {
+                using (Transaction trans = new Transaction(targetDoc, $"Assign elements to workset {worksetName}"))
+                {
+                    trans.Start();
+
+                    // Check if worksharing is enabled, if not, we cannot create worksets
+                    if (!targetDoc.IsWorkshared)
+                    {
+                        LogMessage($"Target document is not workshared - cannot create worksets. Elements will remain in default workset.");
+                        trans.Commit();
+                        return;
+                    }
+
+                    // Create or get the workset
+                    WorksetId targetWorksetId = GetOrCreateWorksetInDocument(targetDoc, worksetName);
+
+                    if (targetWorksetId != WorksetId.InvalidWorksetId)
+                    {
+                        int assignedCount = 0;
+                        foreach (var elementId in copiedElementIds)
+                        {
+                            try
+                            {
+                                Element element = targetDoc.GetElement(elementId);
+                                if (element != null)
+                                {
+                                    var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                                    if (worksetParam != null && !worksetParam.IsReadOnly)
+                                    {
+                                        worksetParam.Set(targetWorksetId.IntegerValue);
+                                        assignedCount++;
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogMessage($"Warning: Could not assign element {elementId} to workset: {ex.Message}");
+                            }
+                        }
+
+                        LogMessage($"Assigned {assignedCount} elements to workset '{worksetName}' in target document");
+                    }
+                    else
+                    {
+                        LogMessage($"Could not create workset '{worksetName}' in target document - elements will remain in default workset");
+                    }
+
+                    trans.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR assigning elements to workset '{worksetName}': {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Create or get workset in a specific document
+        /// </summary>
+        private WorksetId GetOrCreateWorksetInDocument(Document doc, string worksetName)
+        {
+            try
+            {
+                Workset workset = new FilteredWorksetCollector(doc)
+                    .OfKind(WorksetKind.UserWorkset)
+                    .FirstOrDefault(w => w.Name.Equals(worksetName, StringComparison.CurrentCultureIgnoreCase));
+
+                if (workset != null)
+                    return workset.Id;
+
+                var newWorkset = Workset.Create(doc, worksetName);
+                LogMessage($"Created new workset in target document: {worksetName}");
+                return newWorkset.Id;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR creating workset '{worksetName}' in target document: {ex.Message}");
+                return WorksetId.InvalidWorksetId;
+            }
+        }
+
+        /// <summary>
+        /// Export worksets as individual RVT files with correct naming and workset preservation
         /// </summary>
         private void ExportWorksetRVTs(Dictionary<string, List<ElementId>> worksetMapping, string destinationPath, bool overwrite)
         {
@@ -367,10 +518,14 @@ namespace WorksetOrchestrator
                     continue;
                 }
 
-                // Clean workset name for file system
-                string cleanWorksetName = CleanFileSystemName(worksetName);
-                string exportFileName = $"{projectPrefix}_{cleanWorksetName}_WS_DX.rvt";
+                // Get iFLS code for the workset
+                string iflsCode = GetIflsCodeForWorkset(worksetName);
+
+                // Create correct file name: {ProjectPrefix}_{iFlsCode}_MO_Part_001_DX.rvt
+                string exportFileName = $"{projectPrefix}_{iflsCode}_MO_Part_001_DX.rvt";
                 string exportFilePath = System.IO.Path.Combine(destinationPath, exportFileName);
+
+                LogMessage($"Processing workset '{worksetName}' -> iFLS code '{iflsCode}' -> file '{exportFileName}'");
 
                 // If file exists and we should not overwrite, skip.
                 if (System.IO.File.Exists(exportFilePath) && !overwrite)
@@ -407,6 +562,7 @@ namespace WorksetOrchestrator
                     LogMessage($"Created temporary document for workset '{worksetName}' with {elementIds.Count} elements");
 
                     // Copy elements to new document
+                    ICollection<ElementId> copiedIds = null;
                     try
                     {
                         using (Transaction tNew = new Transaction(newDoc, $"Copy workset {worksetName}"))
@@ -416,7 +572,7 @@ namespace WorksetOrchestrator
                             var copyOptions = new CopyPasteOptions();
                             copyOptions.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
 
-                            ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                            copiedIds = ElementTransformUtils.CopyElements(
                                 _doc,
                                 elementIds,
                                 newDoc,
@@ -436,12 +592,34 @@ namespace WorksetOrchestrator
                         continue;
                     }
 
+                    // Assign copied elements to the correct workset in the new document
+                    if (copiedIds != null && copiedIds.Any())
+                    {
+                        AssignElementsToWorkset(newDoc, copiedIds.ToList(), worksetName);
+                    }
+
                     // Save the new document
                     try
                     {
                         var saveOpts = new SaveAsOptions { OverwriteExistingFile = overwrite };
+
+                        // If the document is now workshared, save as central
+                        if (newDoc.IsWorkshared)
+                        {
+                            try
+                            {
+                                var wsOpts = new WorksharingSaveAsOptions { SaveAsCentral = true };
+                                saveOpts.SetWorksharingOptions(wsOpts);
+                                LogMessage($"Saving as central file to preserve worksets");
+                            }
+                            catch (Exception wsEx)
+                            {
+                                LogMessage($"Warning: Could not set worksharing save options: {wsEx.Message}");
+                            }
+                        }
+
                         newDoc.SaveAs(exportFilePath, saveOpts);
-                        LogMessage($"Exported: {exportFileName} (workset: {worksetName})");
+                        LogMessage($"Exported: {exportFileName} (workset: {worksetName} -> iFLS: {iflsCode})");
                         exportedCount++;
                     }
                     catch (Exception saveEx)
@@ -476,7 +654,7 @@ namespace WorksetOrchestrator
             }
             else
             {
-                LogMessage($"Workset extraction completed: {exportedCount} files created.");
+                LogMessage($"Workset extraction completed: {exportedCount} files created with correct iFLS naming.");
             }
         }
 
@@ -516,6 +694,116 @@ namespace WorksetOrchestrator
                 cleaned = cleaned.Substring(0, 50);
 
             return cleaned;
+        }
+
+        /// <summary>
+        /// Extract workset name from exported file name
+        /// Example: "CMPP64-47_C-S_MO_Part_001_DX.rvt" -> "DX_CHM"
+        /// </summary>
+        private string ExtractWorksetNameFromFileName(string fileName)
+        {
+            try
+            {
+                // Get the iFLS code from the filename (second part after splitting by _)
+                var parts = fileName.Split('_');
+                if (parts.Length >= 2)
+                {
+                    string iflsCode = parts[1]; // e.g., "C-S"
+
+                    // Find the corresponding workset name
+                    var mapping = GetWorksetToiFlsMapping();
+                    foreach (var kvp in mapping)
+                    {
+                        if (kvp.Value.Equals(iflsCode, StringComparison.OrdinalIgnoreCase))
+                        {
+                            LogMessage($"Mapped iFLS code '{iflsCode}' back to workset '{kvp.Key}'");
+                            return kvp.Key;
+                        }
+                    }
+
+                    LogMessage($"Warning: Could not find workset for iFLS code '{iflsCode}'");
+                }
+
+                LogMessage($"Warning: Could not extract iFLS code from filename '{fileName}'");
+                return "DX_Unknown";
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error extracting workset name from filename '{fileName}': {ex.Message}");
+                return "DX_Unknown";
+            }
+        }
+
+        /// <summary>
+        /// Assign elements to correct workset in template document
+        /// </summary>
+        private void AssignElementsToWorksetInTemplate(Document templateDoc, List<ElementId> copiedElementIds, string worksetName)
+        {
+            if (copiedElementIds == null || !copiedElementIds.Any() || string.IsNullOrEmpty(worksetName))
+                return;
+
+            try
+            {
+                LogMessage($"Assigning {copiedElementIds.Count} elements to workset '{worksetName}' in template");
+
+                // Template document should already be workshared, but check anyway
+                if (!templateDoc.IsWorkshared)
+                {
+                    LogMessage($"Template document is not workshared - elements will remain in default workset");
+                    return;
+                }
+
+                // Create or get the workset in template
+                WorksetId targetWorksetId = GetOrCreateWorksetInDocument(templateDoc, worksetName);
+
+                if (targetWorksetId != WorksetId.InvalidWorksetId)
+                {
+                    int assignedCount = 0;
+                    int genericModelCount = 0;
+
+                    foreach (var elementId in copiedElementIds)
+                    {
+                        try
+                        {
+                            Element element = templateDoc.GetElement(elementId);
+                            if (element != null)
+                            {
+                                // Check if it's a Generic Model for debugging
+                                if (element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_GenericModel)
+                                {
+                                    genericModelCount++;
+                                    LogMessage($"  Assigning Generic Model {element.Id} to workset '{worksetName}'");
+                                }
+
+                                var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                                if (worksetParam != null && !worksetParam.IsReadOnly)
+                                {
+                                    worksetParam.Set(targetWorksetId.IntegerValue);
+                                    assignedCount++;
+                                }
+                                else
+                                {
+                                    LogMessage($"  Warning: Cannot assign element {element.Id} to workset (parameter readonly or missing)");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogMessage($"Warning: Could not assign element {elementId} to workset: {ex.Message}");
+                        }
+                    }
+
+                    LogMessage($"Successfully assigned {assignedCount} elements (including {genericModelCount} Generic Models) to workset '{worksetName}' in template");
+                }
+                else
+                {
+                    LogMessage($"Could not create/find workset '{worksetName}' in template document");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR assigning elements to workset '{worksetName}' in template: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -683,6 +971,19 @@ namespace WorksetOrchestrator
                                     copyOptions);
 
                                 LogMessage($"Copied {copied?.Count ?? 0} elements into template copy.");
+
+                                // PRESERVE WORKSETS: Get the workset information from the source file name
+                                string sourceFileName = System.IO.Path.GetFileNameWithoutExtension(extractedFilePath);
+                                string worksetName = ExtractWorksetNameFromFileName(sourceFileName);
+
+                                LogMessage($"Extracted workset name '{worksetName}' from file name '{sourceFileName}'");
+
+                                // Create the workset in template document and assign elements
+                                if (!string.IsNullOrEmpty(worksetName) && copied != null && copied.Any())
+                                {
+                                    AssignElementsToWorksetInTemplate(templateDoc, copied.ToList(), worksetName);
+                                }
+
                                 t.Commit();
                             }
                             catch (Exception copyEx)
@@ -876,7 +1177,7 @@ namespace WorksetOrchestrator
         {
             var mepElements = new List<Element>();
 
-            // Get all MEP-related elements (same categories as main workflow)
+            // Get all MEP-related elements (same categories as main workflow) + Generic Models
             var categories = new List<BuiltInCategory>
             {
                 BuiltInCategory.OST_PipeFitting,
@@ -895,7 +1196,14 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_CableTray,
                 BuiltInCategory.OST_CableTrayFitting,
                 BuiltInCategory.OST_Conduit,
-                BuiltInCategory.OST_ConduitFitting
+                BuiltInCategory.OST_ConduitFitting,
+        
+                // ADD THESE CATEGORIES FOR GENERIC MODELS IN TEMPLATE INTEGRATION
+                BuiltInCategory.OST_GenericModel,
+                BuiltInCategory.OST_SpecialityEquipment,
+                BuiltInCategory.OST_Mass,
+                BuiltInCategory.OST_Furniture,
+                BuiltInCategory.OST_FurnitureSystems
             };
 
             foreach (var category in categories)
@@ -906,7 +1214,14 @@ namespace WorksetOrchestrator
                         .OfCategory(category)
                         .WhereElementIsNotElementType();
 
-                    mepElements.AddRange(collector);
+                    var elementsInCategory = collector.ToList();
+                    mepElements.AddRange(elementsInCategory);
+
+                    // Log Generic Models specifically
+                    if (category == BuiltInCategory.OST_GenericModel)
+                    {
+                        LogMessage($"Found {elementsInCategory.Count} Generic Model elements in document '{doc.Title}'");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -914,7 +1229,7 @@ namespace WorksetOrchestrator
                 }
             }
 
-            LogMessage($"Collected {mepElements.Count} total MEP elements from document '{doc.Title}'.");
+            LogMessage($"Collected {mepElements.Count} total elements from document '{doc.Title}'.");
             return mepElements;
         }
 
@@ -922,7 +1237,7 @@ namespace WorksetOrchestrator
         {
             var mepElements = new List<Element>();
 
-            // Get all MEP-related elements
+            // Get all MEP-related elements AND Generic Models
             var categories = new List<BuiltInCategory>
             {
                 BuiltInCategory.OST_PipeFitting,
@@ -941,7 +1256,14 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_CableTray,
                 BuiltInCategory.OST_CableTrayFitting,
                 BuiltInCategory.OST_Conduit,
-                BuiltInCategory.OST_ConduitFitting
+                BuiltInCategory.OST_ConduitFitting,
+        
+                // ADD THESE CATEGORIES FOR GENERIC MODELS
+                BuiltInCategory.OST_GenericModel,
+                BuiltInCategory.OST_SpecialityEquipment,
+                BuiltInCategory.OST_Mass,
+                BuiltInCategory.OST_Furniture,
+                BuiltInCategory.OST_FurnitureSystems
             };
 
             foreach (var category in categories)
@@ -952,7 +1274,14 @@ namespace WorksetOrchestrator
                         .OfCategory(category)
                         .WhereElementIsNotElementType();
 
-                    mepElements.AddRange(collector);
+                    var elementsInCategory = collector.ToList();
+                    mepElements.AddRange(elementsInCategory);
+
+                    // Log Generic Models specifically
+                    if (category == BuiltInCategory.OST_GenericModel)
+                    {
+                        LogMessage($"Found {elementsInCategory.Count} Generic Model elements");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -960,7 +1289,7 @@ namespace WorksetOrchestrator
                 }
             }
 
-            LogMessage($"Collected {mepElements.Count} total MEP elements from {categories.Count} categories.");
+            LogMessage($"Collected {mepElements.Count} total elements from {categories.Count} categories.");
             return mepElements;
         }
 
