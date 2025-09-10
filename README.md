@@ -3,7 +3,7 @@
 A powerful Revit add-in that automates MEP workset organization, model export, and template integration for streamlined project handover and standardization.
 
 
-## 🚀 Features
+##  Features
 
 ### Core Functionality
 - **Automated Workset Organization**: Intelligently assigns MEP elements to worksets based on Excel-defined patterns
@@ -19,7 +19,7 @@ A powerful Revit add-in that automates MEP workset organization, model export, a
 - **Plumbing**: Fixtures, Sprinklers & Accessories
 - **Mechanical**: All MEP equipment categories
 
-## 📋 Requirements
+##  Requirements
 
 ### Software
 - **Autodesk Revit**: 2023 or later
@@ -35,10 +35,9 @@ A powerful Revit add-in that automates MEP workset organization, model export, a
 ## 🔧 Installation
 
 ### Quick Install
-1. Download the latest release from the [Releases](../../releases) page
-2. Extract files to: `C:\ProgramData\Autodesk\Revit\Addins\2023\`
-3. Restart Revit
-4. Look for **Workset Tools** tab or **External Tools** → **Workset Orchestrator**
+1. Extract files to: `C:\ProgramData\Autodesk\Revit\Addins\2023\`
+2. Restart Revit
+3. Look for **Workset Tools** tab or **External Tools** → **Workset Orchestrator**
 
 ### Manual Installation
 ```bash
@@ -53,7 +52,7 @@ C:\ProgramData\Autodesk\Revit\Addins\2023\
 # Launch Revit and check for Workset Tools ribbon tab
 ```
 
-## 📖 Quick Start
+##  Quick Start
 
 ### 1. Prepare Excel Mapping File
 Create an Excel file with a "Mapping" worksheet containing:
@@ -80,7 +79,7 @@ Create an Excel file with a "Mapping" worksheet containing:
 2. Select template file
 3. Integration creates files in "In Template" subfolder
 
-## 🔍 Pattern Matching
+##  Pattern Matching
 
 ### Wildcard Patterns
 - `x` → Single digit (0-9)
@@ -98,7 +97,7 @@ HVAC-*      → Matches: HVAC-Supply-A, HVAC-Return-B
 ### Special Codes
 - `NO EXPORT` → Organize elements but skip export
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 WorksetOrganizer/
@@ -117,7 +116,7 @@ WorksetOrganizer/
 └── app.config              # Application configuration
 ```
 
-## 🔄 Workflow Process
+##  Workflow Process
 
 ### Phase 1: Organization
 1. **Element Collection**: Gathers all MEP elements from model
@@ -161,7 +160,7 @@ INFINEON_CWS_MO_Part_001_DX.rvt
 INFINEON_QC_MO_Part_001_DX.rvt
 ```
 
-## 📊 Performance
+##  Performance
 
 ### Typical Processing Times
 - **Small Models** (< 1000 elements): 2-5 minutes
@@ -174,7 +173,7 @@ INFINEON_QC_MO_Part_001_DX.rvt
 - **Per Export**: 50-100MB additional
 - **Peak Usage**: Up to 2GB for very large models
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -208,7 +207,7 @@ Check `WorksetOrchestrationLog.txt` in destination folder for detailed error inf
 - **"WARNING"** entries are non-critical but worth reviewing
 - **"PROCESS COMPLETED SUCCESSFULLY"** confirms successful completion
 
-## 📝 Development
+##  Development
 
 ### Building from Source
 ```bash
@@ -241,8 +240,6 @@ msbuild WorksetOrganizer.sln /p:Configuration=Release
 - **WPF**: User interface framework
 - **.NET Framework 4.8**: Runtime platform
 
-## 🤝 Contributing
-
 ### Bug Reports
 Please include:
 - Revit version and build number
@@ -265,31 +262,14 @@ Please include:
 5. Submit pull request with clear description
 
 
-## 🏢 Company Information
+##  Company Information
 
 **DEAXO GmbH**
 - **Product**: Workset Organizer for Autodesk Revit
-- **Version**: 1.0.0
+- **Version**: 1.0.8
 - **Support**: Contact BIM Coordination team
 
-## 📈 Changelog
-
-### Version 1.0.0 (September 2025)
-- ✨ **New**: Template integration functionality
-- ✨ **New**: Element-based export engine (replaces view-based)
-- ✨ **New**: Enhanced progress tracking with timeout protection
-- 🔧 **Improved**: Better error handling and recovery
-- 🔧 **Improved**: More intuitive user interface
-- 🔧 **Improved**: Comprehensive logging system
-- 🐛 **Fixed**: Memory issues with large models
-- 🐛 **Fixed**: Synchronization problems with central files
-
-### Version 0.1.0 (Initial Release)
-- ✨ Initial workset organization functionality
-- ✨ Basic export capabilities
-- ✨ Excel mapping integration
-
-## 🎯 Roadmap
+##  Roadmap
 
 ### Planned Features
 - **Multi-language Support**: Interface localization
@@ -305,7 +285,7 @@ Please include:
 - **Incremental Updates**: Process only changed elements
 - **Background Processing**: Non-blocking operations
 
-## 🆘 Support
+##  Support
 
 ### Internal Support Contacts
 - **BIM Coordinator**: Abdul Rahman
