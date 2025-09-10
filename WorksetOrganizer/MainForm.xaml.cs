@@ -18,6 +18,7 @@ namespace WorksetOrchestrator
         private ExternalEvent _externalEvent;
         private List<string> _extractedFiles = new List<string>();
         private string _lastDestinationPath;
+        private bool _isExtractWorksetMode = false;
 
         public MainForm(UIDocument uiDoc, IntPtr revitMainWindowHandle)
         {
@@ -67,6 +68,9 @@ namespace WorksetOrchestrator
             {
                 LogMessage($"Warning reading document info: {ex.Message}");
             }
+
+            // Initialize in QC mode
+            SetQcMode();
         }
 
         protected override void OnClosed(EventArgs e)
@@ -74,6 +78,43 @@ namespace WorksetOrchestrator
             // Dispose of external event when window closes
             _externalEvent?.Dispose();
             base.OnClosed(e);
+        }
+
+        private void SetQcMode()
+        {
+            _isExtractWorksetMode = false;
+            txtModeDescription.Text = "QC Check & Extraction Mode";
+            txtCurrentMode.Text = "QC Mode: Organizes and validates worksets based on Excel mapping";
+
+            // Show Excel file selection and options
+            gridExcelFile.Visibility = Visibility.Visible;
+            stackPanelOptions.Visibility = Visibility.Visible;
+
+            // Update button states
+            btnQcCheck.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 137, 239)); // Primary color
+            btnExtractWorksets.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 244, 250)); // Secondary color
+            btnExtractWorksets.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 51, 51)); // Dark text
+
+            LogMessage("Switched to QC Check & Extraction mode");
+        }
+
+        private void SetExtractWorksetsMode()
+        {
+            _isExtractWorksetMode = true;
+            txtModeDescription.Text = "Extract Worksets Mode";
+            txtCurrentMode.Text = "Extract Mode: Extracts all available worksets into separate files";
+
+            // Hide Excel file selection and QC options (destination is still needed)
+            gridExcelFile.Visibility = Visibility.Collapsed;
+            stackPanelOptions.Visibility = Visibility.Collapsed;
+
+            // Update button states
+            btnExtractWorksets.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 140, 0)); // Orange color
+            btnExtractWorksets.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White);
+            btnQcCheck.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 244, 250)); // Secondary color
+            btnQcCheck.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 51, 51)); // Dark text
+
+            LogMessage("Switched to Extract Worksets mode");
         }
 
         private void OnLogUpdated(object sender, string message)
@@ -128,9 +169,35 @@ namespace WorksetOrchestrator
             }
         }
 
-        private async void BtnRun_Click(object sender, RoutedEventArgs e)
+        private async void BtnQcCheck_Click(object sender, RoutedEventArgs e)
         {
-            // Validation
+            // Switch to QC mode if not already
+            if (_isExtractWorksetMode)
+            {
+                SetQcMode();
+                return;
+            }
+
+            // Run QC Check & Extraction
+            await RunQcCheckAndExtraction();
+        }
+
+        private async void BtnExtractWorksets_Click(object sender, RoutedEventArgs e)
+        {
+            // Switch to Extract mode if not already
+            if (!_isExtractWorksetMode)
+            {
+                SetExtractWorksetsMode();
+                return;
+            }
+
+            // Run Extract Worksets
+            await RunExtractWorksets();
+        }
+
+        private async Task RunQcCheckAndExtraction()
+        {
+            // Validation for QC mode
             if (string.IsNullOrEmpty(txtExcelPath.Text) || !File.Exists(txtExcelPath.Text))
             {
                 System.Windows.MessageBox.Show("Please select a valid Excel file.", "Error",
@@ -152,23 +219,9 @@ namespace WorksetOrchestrator
                 return;
             }
 
-            // Reset extracted files list and hide template button
-            _extractedFiles.Clear();
-            btnIntegrateTemplate.Visibility = Visibility.Collapsed;
-            _lastDestinationPath = txtDestination.Text;
-
-            // Disable UI while running
-            btnRun.IsEnabled = false;
-            btnCancel.Content = "Close";
-            txtLog.Clear();
-
-            // Show progress
-            pbProgress.IsIndeterminate = true;
-            txtStatus.Text = "Initializing...";
-
-            try
+            await ExecuteOperation("QC Check & Extraction", async () =>
             {
-                LogMessage("=== WORKSET ORCHESTRATION STARTED ===");
+                LogMessage("=== QC CHECK & EXTRACTION STARTED ===");
                 LogMessage("Reading Excel mapping file...");
 
                 var mapping = ExcelReader.ReadMapping(txtExcelPath.Text);
@@ -192,6 +245,63 @@ namespace WorksetOrchestrator
 
                 // Wait for completion with timeout
                 await WaitForCompletionAsync();
+            });
+        }
+
+        private async Task RunExtractWorksets()
+        {
+            // Validation for Extract mode
+            if (string.IsNullOrEmpty(txtDestination.Text) || !Directory.Exists(txtDestination.Text))
+            {
+                System.Windows.MessageBox.Show("Please select a valid destination folder.", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            if (!_uiDoc.Document.IsWorkshared)
+            {
+                System.Windows.MessageBox.Show("The current document is not workshared. Please enable worksharing first.", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            await ExecuteOperation("Extract Worksets", async () =>
+            {
+                LogMessage("=== EXTRACT WORKSETS STARTED ===");
+                LogMessage("Extracting all available worksets...");
+
+                // Set parameters for workset extraction mode
+                _eventHandler.SetWorksetExtractionParameters(_orchestrator, txtDestination.Text, true); // Always overwrite in extract mode
+
+                // Raise the external event to execute in Revit context
+                LogMessage("Starting workset extraction in Revit context...");
+                _externalEvent.Raise();
+
+                // Wait for completion with timeout
+                await WaitForCompletionAsync();
+            });
+        }
+
+        private async Task ExecuteOperation(string operationName, Func<Task> operation)
+        {
+            // Reset extracted files list and hide template button
+            _extractedFiles.Clear();
+            btnIntegrateTemplate.Visibility = Visibility.Collapsed;
+            _lastDestinationPath = txtDestination.Text;
+
+            // Disable UI while running
+            btnQcCheck.IsEnabled = false;
+            btnExtractWorksets.IsEnabled = false;
+            btnCancel.Content = "Close";
+            txtLog.Clear();
+
+            // Show progress
+            pbProgress.IsIndeterminate = true;
+            txtStatus.Text = "Initializing...";
+
+            try
+            {
+                await operation();
 
                 // After the wait, update UI based on result
                 pbProgress.IsIndeterminate = false;
@@ -199,7 +309,7 @@ namespace WorksetOrchestrator
 
                 if (_eventHandler.Success)
                 {
-                    LogMessage("=== PROCESS COMPLETED SUCCESSFULLY ===");
+                    LogMessage($"=== {operationName.ToUpper()} COMPLETED SUCCESSFULLY ===");
                     txtStatus.Text = "Completed successfully";
 
                     // Get list of extracted files for template integration
@@ -213,18 +323,18 @@ namespace WorksetOrchestrator
                         LogMessage("Click 'Integrate into Template' to copy extracted elements into a template file.");
                     }
 
-                    System.Windows.MessageBox.Show("Workset orchestration completed successfully!", "Success",
+                    System.Windows.MessageBox.Show($"{operationName} completed successfully!", "Success",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
-                    LogMessage("=== PROCESS COMPLETED WITH ERRORS ===");
+                    LogMessage($"=== {operationName.ToUpper()} COMPLETED WITH ERRORS ===");
                     txtStatus.Text = "Completed with errors";
                     if (_eventHandler.LastException != null)
                     {
                         LogMessage($"Last exception: {_eventHandler.LastException.Message}");
                     }
-                    System.Windows.MessageBox.Show("Workset orchestration completed with errors. Check the log for details.",
+                    System.Windows.MessageBox.Show($"{operationName} completed with errors. Check the log for details.",
                         "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
@@ -238,7 +348,8 @@ namespace WorksetOrchestrator
             }
             finally
             {
-                btnRun.IsEnabled = true;
+                btnQcCheck.IsEnabled = true;
+                btnExtractWorksets.IsEnabled = true;
                 btnCancel.Content = "Cancel";
                 pbProgress.IsIndeterminate = false;
                 pbProgress.Value = 0;
@@ -270,7 +381,8 @@ namespace WorksetOrchestrator
 
             // Disable UI during integration
             btnIntegrateTemplate.IsEnabled = false;
-            btnRun.IsEnabled = false;
+            btnQcCheck.IsEnabled = false;
+            btnExtractWorksets.IsEnabled = false;
             btnCancel.Content = "Close";
             pbProgress.IsIndeterminate = true;
             txtStatus.Text = "Integrating into template...";
@@ -326,7 +438,8 @@ namespace WorksetOrchestrator
             finally
             {
                 btnIntegrateTemplate.IsEnabled = true;
-                btnRun.IsEnabled = true;
+                btnQcCheck.IsEnabled = true;
+                btnExtractWorksets.IsEnabled = true;
                 btnCancel.Content = "Cancel";
                 pbProgress.IsIndeterminate = false;
                 pbProgress.Value = 0;

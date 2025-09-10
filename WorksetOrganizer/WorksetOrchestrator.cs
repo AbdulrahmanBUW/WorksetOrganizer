@@ -165,6 +165,360 @@ namespace WorksetOrchestrator
         }
 
         /// <summary>
+        /// New method: Extract all available worksets into separate files
+        /// No QC checking, no Excel mapping - just extract what exists
+        /// </summary>
+        public bool ExecuteWorksetExtraction(string destinationPath, bool overwriteFiles)
+        {
+            try
+            {
+                if (!_doc.IsWorkshared)
+                {
+                    LogMessage("ERROR: Document is not workshared. Please enable worksharing.");
+                    return false;
+                }
+
+                LogMessage("=== WORKSET EXTRACTION MODE ===");
+                LogMessage("Analyzing available worksets...");
+
+                // Get all user worksets
+                var allWorksets = new FilteredWorksetCollector(_doc)
+                    .OfKind(WorksetKind.UserWorkset)
+                    .Where(w => w.Kind == WorksetKind.UserWorkset)
+                    .ToList();
+
+                LogMessage($"Found {allWorksets.Count} user worksets in the model:");
+                foreach (var workset in allWorksets)
+                {
+                    LogMessage($"  - {workset.Name} (ID: {workset.Id})");
+                }
+
+                // Create workset-to-elements mapping
+                var worksetElementMapping = new Dictionary<string, List<ElementId>>();
+
+                foreach (var workset in allWorksets)
+                {
+                    LogMessage($"Collecting elements for workset: {workset.Name}");
+
+                    // Get all elements in this workset
+                    var elementsInWorkset = new FilteredElementCollector(_doc)
+                        .WhereElementIsNotElementType()
+                        .Where(e => e.WorksetId == workset.Id)
+                        .ToList();
+
+                    // Filter to get only relevant elements (MEP, structural, etc.)
+                    var relevantElements = GetRelevantElementsFromCollection(elementsInWorkset);
+
+                    LogMessage($"  Found {elementsInWorkset.Count} total elements, {relevantElements.Count} relevant elements");
+
+                    if (relevantElements.Count > 0)
+                    {
+                        worksetElementMapping[workset.Name] = relevantElements.Select(e => e.Id).ToList();
+
+                        // Log sample elements for verification
+                        var sampleElements = relevantElements.Take(3).ToList();
+                        foreach (var elem in sampleElements)
+                        {
+                            string categoryName = elem.Category?.Name ?? "Unknown";
+                            LogMessage($"    Sample: {elem.Id} ({categoryName})");
+                        }
+                    }
+                    else
+                    {
+                        LogMessage($"    No relevant elements found in workset '{workset.Name}' - skipping");
+                    }
+                }
+
+                LogMessage($"Worksets with relevant elements: {worksetElementMapping.Count}");
+
+                // Synchronize with central before export (same as QC mode)
+                if (_doc.IsWorkshared)
+                {
+                    try
+                    {
+                        LogMessage("Synchronizing with central and relinquishing ownership...");
+
+                        var transOpts = new TransactWithCentralOptions();
+                        transOpts.SetLockCallback(new SynchLockCallback());
+
+                        var syncOpts = new SynchronizeWithCentralOptions();
+                        var relinquishOpts = new RelinquishOptions(true);
+                        syncOpts.SetRelinquishOptions(relinquishOpts);
+                        syncOpts.SaveLocalAfter = false;
+
+                        _doc.SynchronizeWithCentral(transOpts, syncOpts);
+                        LogMessage("Synchronized with central and relinquished ownership.");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"WARNING: Synchronization with central failed: {ex.Message}");
+                    }
+                }
+
+                // Export worksets as separate RVT files
+                ExportWorksetRVTs(worksetElementMapping, destinationPath, overwriteFiles);
+
+                // Write final log
+                System.IO.File.WriteAllText(System.IO.Path.Combine(destinationPath, "WorksetExtractionLog.txt"), _log.ToString());
+
+                LogMessage("=== WORKSET EXTRACTION COMPLETED ===");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR: {ex.Message}");
+                LogMessage($"Stack Trace: {ex.StackTrace}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Filter elements to include only relevant categories for extraction
+        /// </summary>
+        private List<Element> GetRelevantElementsFromCollection(List<Element> elements)
+        {
+            var relevantElements = new List<Element>();
+
+            // Define categories we want to include in extraction
+            var relevantCategories = new List<BuiltInCategory>
+    {
+        // MEP Categories
+        BuiltInCategory.OST_PipeFitting,
+        BuiltInCategory.OST_PipeAccessory,
+        BuiltInCategory.OST_PipeCurves,
+        BuiltInCategory.OST_DuctFitting,
+        BuiltInCategory.OST_DuctAccessory,
+        BuiltInCategory.OST_DuctCurves,
+        BuiltInCategory.OST_DuctTerminal,
+        BuiltInCategory.OST_MechanicalEquipment,
+        BuiltInCategory.OST_PlumbingFixtures,
+        BuiltInCategory.OST_Sprinklers,
+        BuiltInCategory.OST_ElectricalEquipment,
+        BuiltInCategory.OST_ElectricalFixtures,
+        BuiltInCategory.OST_LightingFixtures,
+        BuiltInCategory.OST_CableTray,
+        BuiltInCategory.OST_CableTrayFitting,
+        BuiltInCategory.OST_Conduit,
+        BuiltInCategory.OST_ConduitFitting,
+        
+        // Structural Categories
+        BuiltInCategory.OST_StructuralFraming,
+        BuiltInCategory.OST_StructuralColumns,
+        BuiltInCategory.OST_StructuralFoundation,
+        BuiltInCategory.OST_StructuralFramingSystem,
+        BuiltInCategory.OST_StructuralStiffener,
+        BuiltInCategory.OST_StructuralTruss,
+        
+        // Architectural Categories (selective)
+        BuiltInCategory.OST_Walls,
+        BuiltInCategory.OST_Doors,
+        BuiltInCategory.OST_Windows,
+        
+        // Generic and Specialty
+        BuiltInCategory.OST_GenericModel,
+        BuiltInCategory.OST_SpecialityEquipment
+    };
+
+            foreach (var element in elements)
+            {
+                try
+                {
+                    if (element.Category != null)
+                    {
+                        var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+                        if (relevantCategories.Contains(categoryId))
+                        {
+                            relevantElements.Add(element);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Warning: Error checking element {element.Id}: {ex.Message}");
+                }
+            }
+
+            return relevantElements;
+        }
+
+        /// <summary>
+        /// Export worksets as individual RVT files
+        /// Similar to ExportRVTs but organized by workset instead of by mapping
+        /// </summary>
+        private void ExportWorksetRVTs(Dictionary<string, List<ElementId>> worksetMapping, string destinationPath, bool overwrite)
+        {
+            string projectPrefix = System.IO.Path.GetFileNameWithoutExtension(_doc.PathName);
+            if (projectPrefix.Contains('_'))
+                projectPrefix = projectPrefix.Split('_')[0];
+
+            LogMessage($"Preparing to export {worksetMapping.Count} workset files...");
+
+            int exportedCount = 0;
+            var app = _uiDoc.Application.Application;
+
+            foreach (var worksetGroup in worksetMapping)
+            {
+                string worksetName = worksetGroup.Key;
+                var elementIds = worksetGroup.Value;
+
+                if (elementIds == null || !elementIds.Any())
+                {
+                    LogMessage($"Skipping '{worksetName}' - no elements to export");
+                    continue;
+                }
+
+                // Clean workset name for file system
+                string cleanWorksetName = CleanFileSystemName(worksetName);
+                string exportFileName = $"{projectPrefix}_{cleanWorksetName}_WS_DX.rvt";
+                string exportFilePath = System.IO.Path.Combine(destinationPath, exportFileName);
+
+                // If file exists and we should not overwrite, skip.
+                if (System.IO.File.Exists(exportFilePath) && !overwrite)
+                {
+                    LogMessage($"Skipped - File exists: {exportFileName}");
+                    continue;
+                }
+
+                Document newDoc = null;
+                try
+                {
+                    // Create new project document
+                    LogMessage($"Creating new document for workset: {worksetName}");
+
+                    string templatePath = null;
+                    try
+                    {
+                        templatePath = _uiDoc.Application.Application.DefaultProjectTemplate;
+                    }
+                    catch { templatePath = null; }
+
+                    if (string.IsNullOrEmpty(templatePath) || !File.Exists(templatePath))
+                    {
+                        newDoc = app.NewProjectDocument(UnitSystem.Metric);
+                    }
+                    else
+                    {
+                        newDoc = app.NewProjectDocument(templatePath);
+                    }
+
+                    if (newDoc == null)
+                        throw new Exception("Failed to create new project document.");
+
+                    LogMessage($"Created temporary document for workset '{worksetName}' with {elementIds.Count} elements");
+
+                    // Copy elements to new document
+                    try
+                    {
+                        using (Transaction tNew = new Transaction(newDoc, $"Copy workset {worksetName}"))
+                        {
+                            tNew.Start();
+
+                            var copyOptions = new CopyPasteOptions();
+                            copyOptions.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
+
+                            ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
+                                _doc,
+                                elementIds,
+                                newDoc,
+                                Transform.Identity,
+                                copyOptions
+                            );
+
+                            tNew.Commit();
+
+                            LogMessage($"Copied {copiedIds?.Count ?? 0} elements for workset '{worksetName}'");
+                        }
+                    }
+                    catch (Exception copyEx)
+                    {
+                        LogMessage($"ERROR copying elements for workset '{worksetName}': {copyEx.Message}");
+                        try { newDoc.Close(false); } catch { }
+                        continue;
+                    }
+
+                    // Save the new document
+                    try
+                    {
+                        var saveOpts = new SaveAsOptions { OverwriteExistingFile = overwrite };
+                        newDoc.SaveAs(exportFilePath, saveOpts);
+                        LogMessage($"Exported: {exportFileName} (workset: {worksetName})");
+                        exportedCount++;
+                    }
+                    catch (Exception saveEx)
+                    {
+                        LogMessage($"ERROR saving workset file '{exportFileName}': {saveEx.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"ERROR preparing export for workset '{worksetName}': {ex.Message}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (newDoc != null)
+                        {
+                            bool closeResult = newDoc.Close(false);
+                            LogMessage($"Closed temporary document for workset '{worksetName}' (success: {closeResult})");
+                        }
+                    }
+                    catch (Exception closeEx)
+                    {
+                        LogMessage($"Warning: Could not close temporary document for '{worksetName}': {closeEx.Message}");
+                    }
+                }
+            }
+
+            if (exportedCount == 0)
+            {
+                LogMessage("WARNING: No workset files were exported - no relevant elements found or all exports skipped.");
+            }
+            else
+            {
+                LogMessage($"Workset extraction completed: {exportedCount} files created.");
+            }
+        }
+
+        /// <summary>
+        /// Clean a string to be safe for file system use
+        /// </summary>
+        private string CleanFileSystemName(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return "Unknown";
+
+            // Replace invalid file system characters
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            string cleaned = input;
+
+            foreach (char c in invalidChars)
+            {
+                cleaned = cleaned.Replace(c, '_');
+            }
+
+            // Replace spaces and other problematic characters
+            cleaned = cleaned.Replace(' ', '_')
+                           .Replace('(', '_')
+                           .Replace(')', '_')
+                           .Replace('[', '_')
+                           .Replace(']', '_')
+                           .Replace('{', '_')
+                           .Replace('}', '_');
+
+            // Trim and ensure it's not empty
+            cleaned = cleaned.Trim('_');
+            if (string.IsNullOrEmpty(cleaned))
+                cleaned = "Unknown";
+
+            // Limit length
+            if (cleaned.Length > 50)
+                cleaned = cleaned.Substring(0, 50);
+
+            return cleaned;
+        }
+
+        /// <summary>
         /// Template integration that preserves worksets in the exported files.
         /// NOTE: preserving worksets requires the saved file to be a workshared (central) file.
         /// </summary>

@@ -24,6 +24,9 @@ namespace WorksetOrchestrator
         private List<string> _extractedFiles;
         private string _templateFilePath;
 
+        // Workset extraction parameters
+        private bool _isWorksetExtraction;
+
         public bool IsComplete => _isComplete;
         public bool Success => _success;
         public Exception LastException => _lastException;
@@ -40,6 +43,24 @@ namespace WorksetOrchestrator
             _success = false;
             _lastException = null;
             _isTemplateIntegration = false;
+            _isWorksetExtraction = false;
+            _extractedFiles = null;
+            _templateFilePath = null;
+        }
+
+        public void SetWorksetExtractionParameters(WorksetOrchestrator orchestrator,
+            string destinationPath, bool overwriteFiles)
+        {
+            _orchestrator = orchestrator;
+            _destinationPath = destinationPath;
+            _overwriteFiles = overwriteFiles;
+            _isComplete = false;
+            _success = false;
+            _lastException = null;
+            _isTemplateIntegration = false;
+            _isWorksetExtraction = true;
+            _mapping = null;
+            _exportQc = false;
             _extractedFiles = null;
             _templateFilePath = null;
         }
@@ -55,6 +76,7 @@ namespace WorksetOrchestrator
             _success = false;
             _lastException = null;
             _isTemplateIntegration = true;
+            _isWorksetExtraction = false;
             _mapping = null;
             _overwriteFiles = false;
             _exportQc = false;
@@ -70,9 +92,14 @@ namespace WorksetOrchestrator
                     _orchestrator.LogMessage($"Event handler: starting template integration for {_extractedFiles?.Count ?? 0} files.");
                     _success = _orchestrator.IntegrateIntoTemplate(_extractedFiles, _templateFilePath, _destinationPath);
                 }
+                else if (_isWorksetExtraction)
+                {
+                    _orchestrator.LogMessage("Event handler: starting workset extraction.");
+                    _success = _orchestrator.ExecuteWorksetExtraction(_destinationPath, _overwriteFiles);
+                }
                 else
                 {
-                    _orchestrator.LogMessage("Event handler: starting standard Execute.");
+                    _orchestrator.LogMessage("Event handler: starting standard QC check and extraction.");
                     _success = _orchestrator.Execute(_mapping, _destinationPath, _overwriteFiles, _exportQc);
                 }
             }

@@ -1,7 +1,7 @@
 <Window x:Class="WorksetOrchestrator.MainForm"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Workset Organizer - DEAXO GmbH" Height="540" Width="760" MinWidth="700" MinHeight="480"
+        Title="Workset Organizer - DEAXO GmbH" Height="580" Width="760" MinWidth="700" MinHeight="520"
         WindowStartupLocation="CenterScreen" Background="#FFF4F6F8">
 
     <Window.Resources>
@@ -22,7 +22,7 @@
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="Margin" Value="4" />
-            <Setter Property="MinWidth" Value="90" />
+            <Setter Property="MinWidth" Value="120" />
             <Setter Property="Background" Value="#FF2D89EF" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderBrush" Value="#FF1B6FD8" />
@@ -33,7 +33,7 @@
         <Style x:Key="SecondaryButton" TargetType="Button">
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="Margin" Value="4" />
-            <Setter Property="MinWidth" Value="90" />
+            <Setter Property="MinWidth" Value="120" />
             <Setter Property="Background" Value="#FFF0F4FA" />
             <Setter Property="Foreground" Value="#FF333333" />
             <Setter Property="BorderBrush" Value="#FFE0E6F0" />
@@ -47,6 +47,17 @@
             <Setter Property="Background" Value="#FF28A745" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderBrush" Value="#FF1E7E34" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style x:Key="ExtractButton" TargetType="Button">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Background" Value="#FFFF8C00" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#FFDC7633" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
         </Style>
@@ -81,7 +92,7 @@
             </DockPanel>
         </Border>
 
-        <!-- Top section: file selectors and options -->
+        <!-- Configuration section -->
         <Border Style="{StaticResource Card}" Grid.Row="1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -90,7 +101,8 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,8,0">
-                    <Grid Margin="0,0,0,8">
+                    <!-- Excel file row (only for QC mode) -->
+                    <Grid Name="gridExcelFile" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -102,6 +114,7 @@
                         <Button Grid.Column="2" Name="btnBrowseExcel" Click="BtnBrowseExcel_Click" Content="Browse..." Width="80" Style="{StaticResource SecondaryButton}" />
                     </Grid>
 
+                    <!-- Destination folder row -->
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -114,7 +127,8 @@
                         <Button Grid.Column="2" Name="btnBrowseDestination" Click="BtnBrowseDestination_Click" Content="Browse..." Width="80" Style="{StaticResource SecondaryButton}" />
                     </Grid>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <!-- Options row -->
+                    <StackPanel Name="stackPanelOptions" Orientation="Horizontal" Margin="0,10,0,0">
                         <CheckBox Name="chkOverwrite" Content="Overwrite existing files?" VerticalAlignment="Center" Margin="0,0,12,0" />
                         <CheckBox Name="chkExportQc" Content="Export DX_QC category?" VerticalAlignment="Center" />
                     </StackPanel>
@@ -122,11 +136,12 @@
 
                 <!-- Quick stats panel -->
                 <StackPanel Grid.Column="1" Width="220" VerticalAlignment="Top">
-                    <TextBlock Text="Run Options" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock Name="txtModeDescription" Text="QC Check &amp; Extraction Mode" FontWeight="SemiBold" Margin="0,0,0,6" />
                     <Border Background="#FFF8F9FB" CornerRadius="6" Padding="8">
                         <StackPanel>
                             <TextBlock Text="Document: " FontSize="12" Foreground="#99000000"/>
                             <TextBlock Text="(opens with Revit document title at runtime)" FontSize="11" Foreground="#66000000" TextWrapping="Wrap" />
+                            <TextBlock Name="txtCurrentMode" Text="QC Mode: Organizes and validates worksets based on Excel mapping" FontSize="11" Foreground="#66000000" TextWrapping="Wrap" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -144,7 +159,7 @@
                 <TextBox Grid.Row="0" Name="txtLog" IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                          TextWrapping="Wrap" AcceptsReturn="True" FontFamily="Consolas" FontSize="12" Background="#FFFBFCFD"/>
 
-                <!-- Progress row: use Grid so ProgressBar can stretch -->
+                <!-- Progress row -->
                 <Grid Grid.Row="1" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -160,7 +175,10 @@
 
         <!-- Footer buttons -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button Name="btnRun" Click="BtnRun_Click" Content="Run" Style="{StaticResource PrimaryButton}"/>
+            <Button Name="btnQcCheck" Click="BtnQcCheck_Click" Content="QC Check &amp; Extraction" 
+                    Style="{StaticResource PrimaryButton}" ToolTip="Organize worksets based on Excel mapping and export packages"/>
+            <Button Name="btnExtractWorksets" Click="BtnExtractWorksets_Click" Content="Extract Worksets" 
+                    Style="{StaticResource ExtractButton}" ToolTip="Extract all available worksets into separate files"/>
             <Button Name="btnIntegrateTemplate" Click="BtnIntegrateTemplate_Click" Content="Integrate into Template" 
                     Style="{StaticResource SuccessButton}" Visibility="Collapsed"/>
             <Button Name="btnCancel" Click="BtnCancel_Click" Content="Cancel" Style="{StaticResource SecondaryButton}"/>
