@@ -66,9 +66,11 @@ namespace WorksetOrchestrator
             txtProgress.Text = "0%";
             btnIntegrateTemplate.Visibility = Visibility.Collapsed;
 
-            // Set placeholder text color
+            // Set placeholder text for TextBox (Excel file)
             SetPlaceholderText(txtExcelPath, "Select mapping Excel file...");
-            SetPlaceholderText(txtDestination, "Select destination folder...");
+
+            // Set placeholder text for Label (Destination)
+            SetPlaceholderLabel(lblDestination, "Select destination folder...");
 
             // Log initial information
             try
@@ -88,11 +90,36 @@ namespace WorksetOrchestrator
 
         private void SetPlaceholderText(System.Windows.Controls.TextBox textBox, string placeholder)
         {
-            if (string.IsNullOrEmpty(textBox.Text))
-            {
-                textBox.Text = placeholder;
-                textBox.Foreground = (SolidColorBrush)FindResource("LabelTertiary");
-            }
+            textBox.Text = placeholder;
+            textBox.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102)); // #666666
+            textBox.FontStyle = FontStyles.Italic;
+            textBox.Tag = null; // No file selected initially
+        }
+
+        private void SetPlaceholderLabel(System.Windows.Controls.Label label, string placeholder)
+        {
+            label.Content = placeholder;
+            label.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102)); // #666666
+            label.FontStyle = FontStyles.Italic;
+            label.Tag = null; // No folder selected initially
+        }
+
+        private void SetSelectedText(System.Windows.Controls.TextBox textBox, string displayText, string fullPath)
+        {
+            textBox.Text = displayText;
+            textBox.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0)); // Black
+            textBox.FontStyle = FontStyles.Normal;
+            textBox.FontWeight = FontWeights.Bold;
+            textBox.Tag = fullPath;
+        }
+
+        private void SetSelectedLabel(System.Windows.Controls.Label label, string displayText, string fullPath)
+        {
+            label.Content = displayText;
+            label.Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 0)); // Black
+            label.FontStyle = FontStyles.Normal;
+            label.FontWeight = FontWeights.Bold;
+            label.Tag = fullPath;
         }
 
         protected override void OnClosed(EventArgs e)
@@ -174,9 +201,8 @@ namespace WorksetOrchestrator
             bool? result = openFileDialog.ShowDialog();
             if (result == true)
             {
-                txtExcelPath.Text = Path.GetFileName(openFileDialog.FileName);
-                txtExcelPath.Tag = openFileDialog.FileName; // Store full path
-                txtExcelPath.Foreground = (SolidColorBrush)FindResource("LabelPrimary");
+                // Update the TextBox for Excel file selection
+                SetSelectedText(txtExcelPath, Path.GetFileName(openFileDialog.FileName), openFileDialog.FileName);
                 LogMessage($"Selected Excel file: {Path.GetFileName(openFileDialog.FileName)}");
             }
         }
@@ -190,9 +216,8 @@ namespace WorksetOrchestrator
 
             if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                txtDestination.Text = Path.GetFileName(folderDialog.SelectedPath);
-                txtDestination.Tag = folderDialog.SelectedPath; // Store full path
-                txtDestination.Foreground = (SolidColorBrush)FindResource("LabelPrimary");
+                // Update the Label for destination folder selection
+                SetSelectedLabel(lblDestination, Path.GetFileName(folderDialog.SelectedPath), folderDialog.SelectedPath);
                 LogMessage($"Selected destination: {folderDialog.SelectedPath}");
             }
         }
@@ -223,7 +248,7 @@ namespace WorksetOrchestrator
 
         private async Task RunQcCheckAndExtraction()
         {
-            // Validation for QC mode
+            // Validation for QC mode - get from TextBox
             string excelPath = txtExcelPath.Tag as string;
             if (string.IsNullOrEmpty(excelPath) || !File.Exists(excelPath))
             {
@@ -231,7 +256,8 @@ namespace WorksetOrchestrator
                 return;
             }
 
-            string destinationPath = txtDestination.Tag as string;
+            // Validation for destination - get from Label
+            string destinationPath = lblDestination.Tag as string;
             if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
                 ShowAlert("Please select a valid destination folder.", "Configuration Required");
@@ -272,7 +298,8 @@ namespace WorksetOrchestrator
 
         private async Task RunExtractWorksets()
         {
-            string destinationPath = txtDestination.Tag as string;
+            // Validation for destination - get from Label
+            string destinationPath = lblDestination.Tag as string;
             if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
                 ShowAlert("Please select a valid destination folder.", "Configuration Required");
@@ -303,7 +330,7 @@ namespace WorksetOrchestrator
         {
             _extractedFiles.Clear();
             btnIntegrateTemplate.Visibility = Visibility.Collapsed;
-            _lastDestinationPath = txtDestination.Tag as string;
+            _lastDestinationPath = lblDestination.Tag as string; // Updated to use Label
 
             // Disable UI
             btnExecute.IsEnabled = false;
@@ -528,6 +555,11 @@ namespace WorksetOrchestrator
         private void ShowSuccess(string message)
         {
             System.Windows.MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void txtExcelPath_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            // Empty event handler - required by XAML
         }
     }
 
