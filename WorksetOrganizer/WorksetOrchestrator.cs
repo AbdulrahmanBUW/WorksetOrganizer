@@ -90,17 +90,16 @@ namespace WorksetOrchestrator
                 }
 
                 var packageGroupMapping = new Dictionary<string, List<ElementId>>();
-                
+
                 var eltRecord = mapping.FirstOrDefault(m => m.WorksetName?.ToUpper() == "DX_ELT");
                 if (eltRecord == null)
                 {
-                    // Add a default ELT record if missing
                     mapping.Add(new MappingRecord
                     {
                         WorksetName = "DX_ELT",
                         SystemNameInModel = "ELT",
                         SystemDescription = "Electrical Elements",
-                        ModelPackageCode = "ELT" // or whatever your code should be
+                        ModelPackageCode = "ELT"
                     });
                     LogMessage("Added default DX_ELT mapping record");
                 }
@@ -112,6 +111,12 @@ namespace WorksetOrchestrator
                     // Create DX_QC workset inside transaction
                     WorksetId qcWorksetId = GetOrCreateWorkset("DX_QC");
 
+                    // STEP 1: First, collect elements that are ALREADY in target worksets
+                    LogMessage("=== STEP 1: Preserving existing workset assignments ===");
+                    var existingWorksetElements = CollectExistingWorksetElements(mapping, packageGroupMapping);
+
+                    // STEP 2: Process Excel mapping for remaining elements
+                    LogMessage("=== STEP 2: Processing Excel mapping for unassigned elements ===");
                     foreach (var record in mapping)
                     {
                         LogMessage($"Processing record for system pattern: {record.SystemNameInModel}");
@@ -125,11 +130,14 @@ namespace WorksetOrchestrator
                         // Create/get target workset inside transaction
                         WorksetId targetWorksetId = GetOrCreateWorkset(record.WorksetName);
 
-                        // Get all MEP elements that could have system information
+                        // Get elements that are NOT already assigned to target worksets
                         var allMepElements = GetAllMepElements();
+                        var unassignedElements = allMepElements.Where(e => !existingWorksetElements.Contains(e.Id)).ToList();
+
+                        LogMessage($"Found {unassignedElements.Count} unassigned elements to check for pattern '{record.SystemNameInModel}'");
 
                         // Find matching elements using improved pattern matching
-                        var matchingElements = FindMatchingElements(allMepElements, record);
+                        var matchingElements = FindMatchingElements(unassignedElements, record);
 
                         LogMessage($"Found {matchingElements.Count} elements for system pattern '{record.SystemNameInModel}'.");
 
@@ -141,44 +149,28 @@ namespace WorksetOrchestrator
                             {
                                 worksetParam.Set(targetWorksetId.IntegerValue);
                                 movedCount++;
+
+                                // Add to package mapping
+                                string normalizedCode = record.NormalizedPackageCode;
+                                if (!packageGroupMapping.ContainsKey(normalizedCode))
+                                    packageGroupMapping[normalizedCode] = new List<ElementId>();
+                                packageGroupMapping[normalizedCode].Add(element.Id);
                             }
                         }
 
                         LogMessage($"Moved {movedCount} elements to workset '{record.WorksetName}'.");
-
-                        // Only add to package mapping if we found elements
-                        if (matchingElements.Count > 0)
-                        {
-                            string normalizedCode = record.NormalizedPackageCode;
-                            if (!packageGroupMapping.ContainsKey(normalizedCode))
-                                packageGroupMapping[normalizedCode] = new List<ElementId>();
-
-                            packageGroupMapping[normalizedCode].AddRange(matchingElements.Select(e => e.Id));
-                        }
                     }
 
-
-
-                    // Move remaining MEP elements to DX_QC
+                    // STEP 3: Move remaining unprocessed MEP elements to DX_QC
+                    LogMessage("=== STEP 3: Moving orphaned elements to DX_QC ===");
                     var allMepElementsAfterProcessing = GetAllMepElements();
-                    var processedElementIds = packageGroupMapping.Values.SelectMany(x => x).ToHashSet();
-
-
-                    var cableTrays = allMepElementsAfterProcessing.Where(e =>
-                    e.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_CableTray ||
-                    e.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_CableTrayFitting).ToList();
-
-                    LogMessage($"Found {cableTrays.Count} cable trays/fittings after processing");
-                    foreach (var ct in cableTrays.Take(5)) // Log first 5
-                    {
-                        bool isProcessed = processedElementIds.Contains(ct.Id);
-                        LogMessage($"  Cable Tray {ct.Id}: Processed = {isProcessed}");
-                    }
+                    var allProcessedElementIds = existingWorksetElements.Concat(
+                        packageGroupMapping.Values.SelectMany(x => x)).ToHashSet();
 
                     int orphanedCount = 0;
                     foreach (var element in allMepElementsAfterProcessing)
                     {
-                        if (!processedElementIds.Contains(element.Id))
+                        if (!allProcessedElementIds.Contains(element.Id))
                         {
                             var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
                             if (worksetParam != null && !worksetParam.IsReadOnly && element.WorksetId != qcWorksetId)
@@ -194,7 +186,7 @@ namespace WorksetOrchestrator
                     trans.Commit();
                 }
 
-                // Export logic outside transaction - only export if elements exist
+                // Export logic outside transaction
                 ExportRVTs(packageGroupMapping, destinationPath, overwriteFiles, exportQc);
 
                 // Write final log
@@ -209,6 +201,93 @@ namespace WorksetOrchestrator
                 return false;
             }
         }
+
+        /// <summary>
+/// Collect elements that are already in target worksets and should be preserved
+/// </summary>
+private HashSet<ElementId> CollectExistingWorksetElements(List<MappingRecord> mapping, Dictionary<string, List<ElementId>> packageGroupMapping)
+{
+    var existingElements = new HashSet<ElementId>();
+    
+    // Get all target workset names from mapping
+    var targetWorksetNames = mapping.Where(m => m.ModelPackageCode != "NO EXPORT")
+                                   .Select(m => m.WorksetName)
+                                   .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    // Add common worksets that should be preserved even if not in mapping
+    targetWorksetNames.Add("DX_STB");  // Always preserve structural
+    targetWorksetNames.Add("DX_ELT");  // Always preserve electrical
+    targetWorksetNames.Add("DX_RR");   // Always preserve cleanroom
+    targetWorksetNames.Add("DX_FND");  // Always preserve foundation
+
+    LogMessage($"Checking for existing elements in target worksets: {string.Join(", ", targetWorksetNames)}");
+
+    foreach (var worksetName in targetWorksetNames)
+    {
+        try
+        {
+            // Find the workset
+            var workset = new FilteredWorksetCollector(_doc)
+                .OfKind(WorksetKind.UserWorkset)
+                .FirstOrDefault(w => w.Name.Equals(worksetName, StringComparison.OrdinalIgnoreCase));
+
+            if (workset == null)
+            {
+                LogMessage($"  Workset '{worksetName}' not found in model");
+                continue;
+            }
+
+            // Get all MEP elements in this workset
+            var elementsInWorkset = GetAllMepElements()
+                .Where(e => e.WorksetId == workset.Id)
+                .ToList();
+
+            if (elementsInWorkset.Any())
+            {
+                LogMessage($"  Found {elementsInWorkset.Count} existing elements in workset '{worksetName}'");
+                
+                // Add to preserved elements
+                foreach (var element in elementsInWorkset)
+                {
+                    existingElements.Add(element.Id);
+                }
+
+                // Add to package mapping for export
+                var mappingRecord = mapping.FirstOrDefault(m => 
+                    m.WorksetName.Equals(worksetName, StringComparison.OrdinalIgnoreCase));
+                
+                string packageCode;
+                if (mappingRecord != null)
+                {
+                    packageCode = mappingRecord.NormalizedPackageCode;
+                }
+                else
+                {
+                    // For worksets not in mapping (like DX_STB), use workset-based iFLS code
+                    packageCode = GetIflsCodeForWorkset(worksetName);
+                }
+
+                if (!packageGroupMapping.ContainsKey(packageCode))
+                    packageGroupMapping[packageCode] = new List<ElementId>();
+                
+                packageGroupMapping[packageCode].AddRange(elementsInWorkset.Select(e => e.Id));
+
+                LogMessage($"  Preserved {elementsInWorkset.Count} elements from '{worksetName}' for export as '{packageCode}'");
+            }
+            else
+            {
+                LogMessage($"  No elements found in existing workset '{worksetName}'");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"  Error checking workset '{worksetName}': {ex.Message}");
+        }
+    }
+
+    LogMessage($"Total existing elements preserved: {existingElements.Count}");
+    return existingElements;
+}
 
         /// <summary>
         /// New method: Extract all available worksets into separate files
@@ -334,6 +413,8 @@ namespace WorksetOrchestrator
         BuiltInCategory.OST_PipeCurves,
         BuiltInCategory.OST_DuctFitting,
         BuiltInCategory.OST_DuctAccessory,
+        BuiltInCategory.OST_FlexPipeCurves, // new added
+        BuiltInCategory.OST_FlexDuctCurves, // new added
         BuiltInCategory.OST_DuctCurves,
         BuiltInCategory.OST_DuctTerminal,
         BuiltInCategory.OST_MechanicalEquipment,
@@ -1293,6 +1374,81 @@ namespace WorksetOrchestrator
             return mepElements;
         }
 
+        /// <summary>
+        /// Check if a Generic Model should be considered structural
+        /// </summary>
+        private bool IsGenericModelStructural(Element element)
+        {
+            try
+            {
+                // Only check Generic Model elements
+                if (element.Category?.Id.IntegerValue != (int)BuiltInCategory.OST_GenericModel)
+                    return false;
+
+                LogMessage($"Checking Generic Model {element.Id} for structural classification");
+
+                // Check both type and instance parameters
+                var parameterSources = new List<Element> { element };
+
+                ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
+                if (elementType != null)
+                    parameterSources.Add(elementType);
+
+                foreach (var paramSource in parameterSources)
+                {
+                    var worksetParam = paramSource.LookupParameter("Workset");
+                    if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
+                    {
+                        string worksetValue = worksetParam.AsString();
+                        LogMessage($"  Generic Model {element.Id} has Workset parameter: '{worksetValue}'");
+
+                        var structuralKeywords = new[]
+                        {
+                    "Steel", "Structure", "Structural", "STB", "Frame", "Column", "Beam", "Foundation"
+                };
+
+                        bool isStructural = structuralKeywords.Any(keyword =>
+                            worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                        if (isStructural)
+                        {
+                            LogMessage($"  Generic Model {element.Id} identified as structural based on Workset parameter: '{worksetValue}'");
+                            return true;
+                        }
+                    }
+
+                    // Also check family name and type name for structural keywords
+                    if (element is FamilyInstance familyInstance)
+                    {
+                        string familyName = familyInstance.Symbol?.FamilyName ?? "";
+                        string typeName = familyInstance.Symbol?.Name ?? "";
+
+                        var structuralKeywords = new[]
+                        {
+                    "Steel", "Structure", "Structural", "STB", "Frame", "Column", "Beam", "Foundation"
+                };
+
+                        bool isFamilyStructural = structuralKeywords.Any(keyword =>
+                            familyName.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            typeName.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                        if (isFamilyStructural)
+                        {
+                            LogMessage($"  Generic Model {element.Id} identified as structural based on family/type name: '{familyName}' / '{typeName}'");
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Error checking if Generic Model {element.Id} is structural: {ex.Message}");
+                return false;
+            }
+        }
+
         private List<Element> FindMatchingElements(List<Element> elements, MappingRecord record)
         {
             var matchingElements = new List<Element>();
@@ -1315,6 +1471,44 @@ namespace WorksetOrchestrator
                 }
 
                 LogMessage($"Found {matchingElements.Count} electrical elements for DX_ELT");
+                return matchingElements;
+            }
+
+            // Special handling for DX_STB workset - check structural elements (including Generic Models)
+            if (record.WorksetName?.ToUpper() == "DX_STB")
+            {
+                LogMessage($"Processing DX_STB workset - checking for structural elements including Generic Models");
+
+                // Add debugging for structural elements
+                DebugStructuralElements(elements);
+
+                foreach (var element in elements)
+                {
+                    if (IsElementStructuralType(element) || IsGenericModelStructural(element))
+                    {
+                        matchingElements.Add(element);
+                        LogMessage($"  Added structural element {element.Id} ({element.Category?.Name ?? "No Category"}) to DX_STB");
+                    }
+                }
+
+                LogMessage($"Found {matchingElements.Count} structural elements (including Generic Models) for DX_STB");
+                return matchingElements;
+            }
+
+            // Special handling for other category-based worksets
+            if (IsWorksetCategoryBased(record.WorksetName))
+            {
+                LogMessage($"Processing category-based workset '{record.WorksetName}' - checking by category and parameters");
+
+                foreach (var element in elements)
+                {
+                    if (IsElementMatchingByCategory(element, record))
+                    {
+                        matchingElements.Add(element);
+                    }
+                }
+
+                LogMessage($"Found {matchingElements.Count} category-based elements for {record.WorksetName}");
                 return matchingElements;
             }
 
@@ -1346,6 +1540,71 @@ namespace WorksetOrchestrator
             return matchingElements;
         }
 
+        /// <summary>
+        /// Check if a workset should be processed by category rather than system patterns
+        /// </summary>
+        private bool IsWorksetCategoryBased(string worksetName)
+        {
+            if (string.IsNullOrEmpty(worksetName))
+                return false;
+
+            var categoryBasedWorksets = new[]
+            {
+        "DX_STB",    // Structural
+        "DX_RR",     // Cleanroom Partitions  
+        "DX_FND",    // Foundations
+        "DX_ELT"     // Electrical (already handled above)
+    };
+
+            return categoryBasedWorksets.Any(w =>
+                w.Equals(worksetName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Debug method to log all elements being processed for DX_STB
+        /// </summary>
+        private void DebugStructuralElements(List<Element> allElements)
+        {
+            LogMessage("=== DEBUGGING STRUCTURAL ELEMENTS ===");
+
+            // Count elements by category
+            var categoryCounts = new Dictionary<string, int>();
+            var structuralElements = new List<Element>();
+
+            foreach (var element in allElements)
+            {
+                string categoryName = element.Category?.Name ?? "No Category";
+                if (!categoryCounts.ContainsKey(categoryName))
+                    categoryCounts[categoryName] = 0;
+                categoryCounts[categoryName]++;
+
+                // Check if this element would be considered structural
+                if (IsElementStructuralType(element) || IsGenericModelStructural(element))
+                {
+                    structuralElements.Add(element);
+                }
+            }
+
+            LogMessage($"Total elements being processed: {allElements.Count}");
+            LogMessage("Element counts by category:");
+            foreach (var kvp in categoryCounts.OrderByDescending(x => x.Value))
+            {
+                LogMessage($"  {kvp.Key}: {kvp.Value}");
+            }
+
+            LogMessage($"Elements identified as structural: {structuralElements.Count}");
+            foreach (var elem in structuralElements.Take(10)) // Show first 10
+            {
+                LogMessage($"  Structural Element {elem.Id}: {elem.Category?.Name ?? "No Category"}");
+            }
+            if (structuralElements.Count > 10)
+            {
+                LogMessage($"  ... and {structuralElements.Count - 10} more");
+            }
+
+            LogMessage("=== END STRUCTURAL ELEMENTS DEBUG ===");
+        }
+
         private bool IsElementMatchingByCategory(Element element, MappingRecord record)
         {
             try
@@ -1363,13 +1622,24 @@ namespace WorksetOrchestrator
                     }
                 }
 
-                // Handle DX_STB - Structural elements
+                // Handle DX_STB - Structural elements (including Generic Models)
                 else if (worksetName == "DX_STB")
                 {
+                    // Check pure structural categories first
                     if (IsElementStructuralType(element))
                     {
                         LogMessage($"  MATCH (Category-STB): Element {element.Id} identified as structural");
                         return true;
+                    }
+
+                    // Check if Generic Model is structural
+                    if (element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_GenericModel)
+                    {
+                        if (IsGenericModelStructural(element))
+                        {
+                            LogMessage($"  MATCH (GenericModel-STB): Generic Model {element.Id} identified as structural");
+                            return true;
+                        }
                     }
                 }
 
@@ -1418,28 +1688,46 @@ namespace WorksetOrchestrator
         {
             try
             {
+                // Enhanced logging for debugging
+                LogMessage($"  Checking element {element.Id} for structural type - Category: {element.Category?.Name ?? "NULL"}");
+
                 // Check structural categories
                 var structuralCategories = new[]
                 {
-            BuiltInCategory.OST_StructuralFraming,
-            BuiltInCategory.OST_StructuralColumns,
-            BuiltInCategory.OST_StructuralFoundation,
-            BuiltInCategory.OST_StructuralFramingSystem,
-            BuiltInCategory.OST_StructuralStiffener,
-            BuiltInCategory.OST_StructuralTruss
-        };
+                    BuiltInCategory.OST_StructuralFraming,
+                    BuiltInCategory.OST_StructuralColumns,
+                    BuiltInCategory.OST_StructuralFoundation,
+                    BuiltInCategory.OST_StructuralFramingSystem,
+                    BuiltInCategory.OST_StructuralStiffener,
+                    BuiltInCategory.OST_StructuralTruss,
+                    // Add more categories that might contain structural elements
+                    BuiltInCategory.OST_GenericModel  // Generic Models can be structural
+                };
 
                 var elementCategory = element.Category;
                 if (elementCategory != null)
                 {
                     var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
+                    LogMessage($"    Category ID: {categoryId}");
+
                     if (structuralCategories.Contains(categoryId))
                     {
-                        LogMessage($"  Structural element {element.Id} - category match: {categoryId}");
-                        return true;
+                        // For pure structural categories, check workset parameter to confirm
+                        if (categoryId != BuiltInCategory.OST_GenericModel)
+                        {
+                            LogMessage($"    Pure structural category match: {categoryId}");
+                            return CheckStructuralWorksetParameter(element);
+                        }
+                        // For Generic Models, use the specific Generic Model structural check
+                        else
+                        {
+                            LogMessage($"    Generic Model - checking if structural");
+                            return IsGenericModelStructural(element);
+                        }
                     }
                 }
 
+                LogMessage($"    No structural category match for element {element.Id}");
                 return false;
             }
             catch (Exception ex)
@@ -1516,6 +1804,8 @@ namespace WorksetOrchestrator
         {
             try
             {
+                LogMessage($"    Checking structural workset parameter for element {element.Id}");
+
                 // Get the element's type
                 ElementType elementType = element.Document.GetElement(element.GetTypeId()) as ElementType;
 
@@ -1526,17 +1816,25 @@ namespace WorksetOrchestrator
                     if (worksetParam != null && !string.IsNullOrEmpty(worksetParam.AsString()))
                     {
                         string worksetValue = worksetParam.AsString();
-                        LogMessage($"  Structural element {element.Id} has Workset parameter: '{worksetValue}'");
+                        LogMessage($"      Type Workset parameter: '{worksetValue}'");
 
                         var structuralKeywords = new[]
                         {
-                    "Steel", "Structure", "Structural", "STB", "Frame", "Column", "Beam"
+                    "Steel", "Structure", "Structural", "STB", "Frame", "Column", "Beam", "Foundation"
                 };
 
                         bool isStructural = structuralKeywords.Any(keyword =>
                             worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
 
-                        return isStructural;
+                        if (isStructural)
+                        {
+                            LogMessage($"      MATCH: Found structural keyword in type workset parameter");
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        LogMessage($"      No type Workset parameter found");
                     }
                 }
 
@@ -1545,31 +1843,47 @@ namespace WorksetOrchestrator
                 if (instanceWorksetParam != null && !string.IsNullOrEmpty(instanceWorksetParam.AsString()))
                 {
                     string worksetValue = instanceWorksetParam.AsString();
-                    var structuralKeywords = new[] { "Steel", "Structure", "Structural", "STB" };
+                    LogMessage($"      Instance Workset parameter: '{worksetValue}'");
 
-                    return structuralKeywords.Any(keyword =>
+                    var structuralKeywords = new[] { "Steel", "Structure", "Structural", "STB", "Frame", "Column", "Beam", "Foundation" };
+
+                    bool isStructural = structuralKeywords.Any(keyword =>
                         worksetValue.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                    if (isStructural)
+                    {
+                        LogMessage($"      MATCH: Found structural keyword in instance workset parameter");
+                        return true;
+                    }
+                }
+                else
+                {
+                    LogMessage($"      No instance Workset parameter found");
                 }
 
-                // Default to true for structural categories
+                // Default to true for pure structural categories (but not Generic Model)
                 var elementCategory = element.Category;
                 if (elementCategory != null)
                 {
                     var categoryId = (BuiltInCategory)elementCategory.Id.IntegerValue;
                     var pureStructuralCategories = new[]
                     {
-                BuiltInCategory.OST_StructuralFraming,
-                BuiltInCategory.OST_StructuralColumns,
-                BuiltInCategory.OST_StructuralFoundation
-            };
+                        BuiltInCategory.OST_StructuralFraming,
+                        BuiltInCategory.OST_StructuralColumns,
+                        BuiltInCategory.OST_StructuralFoundation,
+                        BuiltInCategory.OST_StructuralFramingSystem,
+                        BuiltInCategory.OST_StructuralStiffener,
+                        BuiltInCategory.OST_StructuralTruss
+                    };
 
                     if (pureStructuralCategories.Contains(categoryId))
                     {
-                        LogMessage($"  Structural element {element.Id} - pure structural category, defaulting to true");
+                        LogMessage($"      Pure structural category, defaulting to true: {categoryId}");
                         return true;
                     }
                 }
 
+                LogMessage($"      No structural match found for element {element.Id}");
                 return false;
             }
             catch (Exception ex)
@@ -2026,13 +2340,6 @@ namespace WorksetOrchestrator
             }
         }
 
-        /// <summary>
-        /// New export flow:
-        ///  - Sync with central and relinquish ownership to avoid borrow issues
-        ///  - For each package group, create a fresh new project document, copy only the element ids
-        ///    (ElementTransformUtils.CopyElements) into the new document inside a transaction
-        ///  - SaveAs the new document and close it
-        /// </summary>
         private void ExportRVTs(Dictionary<string, List<ElementId>> packageGroups, string destinationPath, bool overwrite, bool exportQc)
         {
             string projectPrefix = System.IO.Path.GetFileNameWithoutExtension(_doc.PathName);
@@ -2083,21 +2390,14 @@ namespace WorksetOrchestrator
                 {
                     LogMessage("Attempting to synchronize with central and relinquish ownership...");
 
-                    // Build TransactWithCentralOptions and SynchronizeWithCentralOptions
                     var transOpts = new TransactWithCentralOptions();
-                    transOpts.SetLockCallback(new SynchLockCallback()); // if central is locked, we will give up quickly rather than waiting
+                    transOpts.SetLockCallback(new SynchLockCallback());
 
                     var syncOpts = new SynchronizeWithCentralOptions();
-
-                    // RelinquishOptions: true = relinquish owned elements/worksets after sync.
-                    // If you want to relinquish selectively, construct RelinquishOptions appropriately.
                     var relinquishOpts = new RelinquishOptions(true);
                     syncOpts.SetRelinquishOptions(relinquishOpts);
-
-                    // Do not save local after sync (optional; set to true if you want a local save)
                     syncOpts.SaveLocalAfter = false;
 
-                    // Call synchronize (two-argument overload)
                     _doc.SynchronizeWithCentral(transOpts, syncOpts);
 
                     LogMessage("Synchronized with central and relinquished ownership (per options).");
@@ -2105,7 +2405,6 @@ namespace WorksetOrchestrator
                 catch (Exception ex)
                 {
                     LogMessage($"WARNING: Synchronization with central failed: {ex.Message}");
-                    // Proceeding anyway — copying only selected elements below may still succeed.
                 }
             }
             else
@@ -2120,8 +2419,13 @@ namespace WorksetOrchestrator
                 if (string.Equals(group.Key, "NO EXPORT", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                string exportFileName = $"{projectPrefix}_{group.Key}_MO_Part_001_DX.rvt";
+                // FIXED: Get the correct iFLS code instead of using the raw ModelPackageCode
+                string iflsCode = GetIflsCodeForPackage(group.Key);
+
+                string exportFileName = $"{projectPrefix}_{iflsCode}_MO_Part_001_DX.rvt";
                 string exportFilePath = System.IO.Path.Combine(destinationPath, exportFileName);
+
+                LogMessage($"Exporting package '{group.Key}' -> iFLS code '{iflsCode}' -> file '{exportFileName}'");
 
                 // If file exists and we should not overwrite, skip.
                 if (System.IO.File.Exists(exportFilePath) && !overwrite)
@@ -2137,7 +2441,6 @@ namespace WorksetOrchestrator
                     string templatePath = null;
                     try
                     {
-                        // Prefer Revit's DefaultProjectTemplate if available
                         templatePath = _uiDoc.Application.Application.DefaultProjectTemplate;
                     }
                     catch
@@ -2147,9 +2450,8 @@ namespace WorksetOrchestrator
 
                     if (string.IsNullOrEmpty(templatePath) || !File.Exists(templatePath))
                     {
-                        // Fallback: create new project using UnitSystem overload (create a new default doc)
                         LogMessage("Default project template not available or not found - creating new blank project document.");
-                        newDoc = _uiDoc.Application.Application.NewProjectDocument(UnitSystem.Metric); // choose UnitSystem.Metric as default; change if needed
+                        newDoc = _uiDoc.Application.Application.NewProjectDocument(UnitSystem.Metric);
                     }
                     else
                     {
@@ -2161,27 +2463,23 @@ namespace WorksetOrchestrator
 
                     LogMessage($"Created temporary new project document for export '{group.Key}'.");
 
-                    // Prepare the list of element ids to copy: ensure distinct and still valid in source doc
                     var sourceElementIds = group.Value.Where(id => id != null).Distinct().ToList();
 
                     if (!sourceElementIds.Any())
                     {
                         LogMessage($"No valid elements to copy for group '{group.Key}' - skipping.");
-                        // Close the temporary doc cleanly
                         try { newDoc.Close(false); } catch { }
                         continue;
                     }
 
-                    // Copy elements from current document into the new document inside a transaction on the destination
                     try
                     {
                         using (Transaction tNew = new Transaction(newDoc, $"Copy elements for {group.Key}"))
                         {
                             tNew.Start();
 
-                            // Use ElementTransformUtils.CopyElements to copy from source to destination
                             var copyOptions = new CopyPasteOptions();
-                            // Optionally, configure copyOptions (duplicate type handling, etc.)
+                            copyOptions.SetDuplicateTypeNamesHandler(new DuplicateTypeNamesHandler());
 
                             ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(
                                 _doc,
@@ -2199,12 +2497,10 @@ namespace WorksetOrchestrator
                     catch (Exception copyEx)
                     {
                         LogMessage($"ERROR copying elements for group '{group.Key}': {copyEx.Message}");
-                        // Try to close the temporary doc and continue
                         try { newDoc.Close(false); } catch { }
                         continue;
                     }
 
-                    // Save the new document to disk
                     try
                     {
                         var saveOpts = new SaveAsOptions
@@ -2212,7 +2508,6 @@ namespace WorksetOrchestrator
                             OverwriteExistingFile = overwrite
                         };
 
-                        // If you want to make the saved file workshared (central/local) change SaveAsOptions accordingly.
                         newDoc.SaveAs(exportFilePath, saveOpts);
                         LogMessage($"Exported: {exportFileName} with {group.Value.Count} elements");
                         exportedCount++;
@@ -2228,12 +2523,10 @@ namespace WorksetOrchestrator
                 }
                 finally
                 {
-                    // Close the temporary document. Close(true) would attempt to save; but we already saved.
                     try
                     {
                         if (newDoc != null)
                         {
-                            // Close without saving (we already saved with SaveAs). Use Close(false) to avoid prompts.
                             bool closeResult = newDoc.Close(false);
                             LogMessage($"Temporary document closed for group '{group.Key}' (success: {closeResult}).");
                         }
@@ -2253,6 +2546,49 @@ namespace WorksetOrchestrator
             {
                 LogMessage($"Completed exports: {exportedCount} files created.");
             }
+        }
+
+        /// <summary>
+        /// Get the correct iFLS code for a package group key
+        /// </summary>
+        private string GetIflsCodeForPackage(string packageKey)
+        {
+            // Handle special cases first
+            if (packageKey.Equals("QC", StringComparison.OrdinalIgnoreCase))
+                return "QC";
+
+            // Map common package codes to their iFLS equivalents
+            var packageToIflsMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                {"B-D", "B-D"},
+                {"D-D", "D-D"},
+                {"C-S", "C-S"},
+                {"C-L", "C-L"},
+                {"E-X", "E-X"},  // This is the correct iFLS for electrical
+                {"ELT", "E-X"},  // Map ELT to E-X
+                {"A-X", "A-X"},
+                {"S-D", "S-D"},
+                {"G-B", "G-B"},
+                {"P-D", "P-D"},
+                {"G-S", "G-S"},
+                {"U-D", "U-D"},
+                {"V-D", "V-D"},
+                {"M-S", "M-S"},
+                {"V-V", "V-V"},
+                {"S-T", "S-T"},  // Structural iFLS code
+            };
+
+            // Check if we have a direct mapping
+            if (packageToIflsMapping.TryGetValue(packageKey, out string iflsCode))
+            {
+                return iflsCode;
+            }
+
+            // If no mapping found, clean up the package key and use it as-is
+            string cleanedKey = packageKey.Replace("4xx", "").Replace("xxx", "").Trim();
+            LogMessage($"Warning: No iFLS mapping found for package '{packageKey}', using cleaned key '{cleanedKey}'");
+
+            return cleanedKey;
         }
 
         // A small callback implementation for central lock handling. Returning false means "don't wait, give up".
