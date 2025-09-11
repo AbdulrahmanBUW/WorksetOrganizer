@@ -130,57 +130,46 @@
             </Style.Triggers>
         </Style>
 
-        <!-- macOS-style text input -->
-        <Style x:Key="MacTextBox" TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource SystemBackground}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource SystemGray4}"/>
+        <!-- Simple TextBox Style for debugging -->
+        <Style x:Key="PlaceholderTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#FFD1D1D6"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="12,10"/>
             <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontFamily" Value="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="Height" Value="40"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8">
-                            <ScrollViewer x:Name="PART_ContentHost" 
-                                        Margin="{TemplateBinding Padding}"
-                                        VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter Property="BorderBrush" Value="{StaticResource SystemBlue}"/>
-                                <Setter Property="BorderThickness" Value="2"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+            <Setter Property="Foreground" Value="#FF666666"/>
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
-        <!-- macOS-style labels -->
+        <!-- macOS-style labels with Apple-like fonts -->
         <Style x:Key="TitleLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="28"/>
             <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif"/>
             <Setter Property="Foreground" Value="{StaticResource LabelPrimary}"/>
         </Style>
 
         <Style x:Key="SubtitleLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif"/>
             <Setter Property="Foreground" Value="{StaticResource LabelSecondary}"/>
         </Style>
 
         <Style x:Key="BodyLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif"/>
             <Setter Property="Foreground" Value="{StaticResource LabelSecondary}"/>
         </Style>
 
         <Style x:Key="CaptionLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif"/>
             <Setter Property="Foreground" Value="{StaticResource LabelTertiary}"/>
         </Style>
 
@@ -215,11 +204,21 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
+        <!-- Header with Company Branding and Version -->
         <StackPanel Grid.Row="0" Margin="0,0,0,32">
-            <TextBlock Text="Workset Organizer" Style="{StaticResource TitleLabel}"/>
-            <TextBlock Text="Manage worksets, extract packages, and organize BIM data" 
-                      Style="{StaticResource BodyLabel}" Margin="0,4,0,0"/>
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left">
+                    <TextBlock Text="Workset Organizer" Style="{StaticResource TitleLabel}"/>
+                    <TextBlock Text="Manage worksets, extract packages, and organize BIM data" 
+                              Style="{StaticResource BodyLabel}" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                    <TextBlock Text="DEAXO GmbH" Style="{StaticResource CaptionLabel}" 
+                              HorizontalAlignment="Right" FontWeight="Medium"/>
+                    <TextBlock Text="Version 1.0.0" Style="{StaticResource CaptionLabel}" 
+                              HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                </StackPanel>
+            </DockPanel>
         </StackPanel>
 
         <!-- Mode Selection -->
@@ -270,8 +269,8 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Name="txtExcelPath" Grid.Column="0" Style="{StaticResource MacTextBox}" 
-                                    Margin="0,0,12,0" Text="Select mapping Excel file..."/>
+                            <TextBox Name="txtExcelPath" Grid.Column="0" Style="{StaticResource PlaceholderTextBox}" 
+                                    Margin="0,0,12,0" Text="Select mapping Excel file..." TextChanged="txtExcelPath_TextChanged"/>
                             <Button Name="btnBrowseExcel" Grid.Column="1" Content="Browse" 
                                    Style="{StaticResource SecondaryButton}" Click="BtnBrowseExcel_Click"/>
                         </Grid>
@@ -285,10 +284,20 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Name="txtDestination" Grid.Column="0" Style="{StaticResource MacTextBox}" 
-                                    Margin="0,0,12,0" Text="Select destination folder..."/>
-                            <Button Name="btnBrowseDestination" Grid.Column="1" Content="Browse" 
-                                   Style="{StaticResource SecondaryButton}" Click="BtnBrowseDestination_Click"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Margin="0,0,12,0" Height="40" 
+                                       Background="White" BorderBrush="#FFD1D1D6" BorderThickness="1" CornerRadius="8">
+                                    <Label Name="lblDestination" Content="Select destination folder..." 
+                                          Foreground="#FF666666" FontStyle="Italic" FontSize="14" 
+                                          VerticalAlignment="Center" Padding="12,0" FontFamily="Segoe UI"/>
+                                </Border>
+                                <Button Name="btnBrowseDestination" Grid.Column="1" Content="Browse" 
+                                       Style="{StaticResource SecondaryButton}" Click="BtnBrowseDestination_Click"/>
+                            </Grid>
                         </Grid>
                     </StackPanel>
 
