@@ -7,6 +7,9 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Forms; // Only for FolderBrowserDialog
 using System.Collections.Generic;
+using System.Windows.Media;
+using System.Windows.Data;
+using System.Globalization;
 
 namespace WorksetOrchestrator
 {
@@ -53,16 +56,26 @@ namespace WorksetOrchestrator
             }
 
             // Initialize UI
+            InitializeInterface();
+        }
+
+        private void InitializeInterface()
+        {
             txtStatus.Text = "Ready";
             pbProgress.Value = 0;
-            pbProgress.IsIndeterminate = false;
-            btnIntegrateTemplate.Visibility = Visibility.Collapsed; // Initially hidden
+            txtProgress.Text = "0%";
+            btnIntegrateTemplate.Visibility = Visibility.Collapsed;
+
+            // Set placeholder text color
+            SetPlaceholderText(txtExcelPath, "Select mapping Excel file...");
+            SetPlaceholderText(txtDestination, "Select destination folder...");
 
             // Log initial information
             try
             {
                 LogMessage($"Document: {_uiDoc.Document.Title}");
                 LogMessage($"Workshared: {_uiDoc.Document.IsWorkshared}");
+                LogMessage("Ready to organize worksets");
             }
             catch (Exception ex)
             {
@@ -73,9 +86,17 @@ namespace WorksetOrchestrator
             SetQcMode();
         }
 
+        private void SetPlaceholderText(System.Windows.Controls.TextBox textBox, string placeholder)
+        {
+            if (string.IsNullOrEmpty(textBox.Text))
+            {
+                textBox.Text = placeholder;
+                textBox.Foreground = (SolidColorBrush)FindResource("LabelTertiary");
+            }
+        }
+
         protected override void OnClosed(EventArgs e)
         {
-            // Dispose of external event when window closes
             _externalEvent?.Dispose();
             base.OnClosed(e);
         }
@@ -83,17 +104,20 @@ namespace WorksetOrchestrator
         private void SetQcMode()
         {
             _isExtractWorksetMode = false;
-            txtModeDescription.Text = "QC Check & Extraction Mode";
-            txtCurrentMode.Text = "QC Mode: Organizes and validates worksets based on Excel mapping";
 
-            // Show Excel file selection and options
-            gridExcelFile.Visibility = Visibility.Visible;
-            stackPanelOptions.Visibility = Visibility.Visible;
+            // Update button styles
+            btnQcMode.Style = (Style)FindResource("SegmentedButtonActive");
+            btnExtractMode.Style = (Style)FindResource("SegmentedButton");
 
-            // Update button states
-            btnQcCheck.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 137, 239)); // Primary color
-            btnExtractWorksets.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 244, 250)); // Secondary color
-            btnExtractWorksets.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 51, 51)); // Dark text
+            // Update UI visibility
+            panelExcelFile.Visibility = Visibility.Visible;
+            panelOptions.Visibility = Visibility.Visible;
+
+            // Update description
+            txtModeDescription.Text = "Organizes and validates worksets based on Excel mapping. Elements are categorized by system patterns and moved to appropriate worksets before export.";
+
+            // Update execute button
+            btnExecute.Content = "Start QC & Extraction";
 
             LogMessage("Switched to QC Check & Extraction mode");
         }
@@ -101,40 +125,40 @@ namespace WorksetOrchestrator
         private void SetExtractWorksetsMode()
         {
             _isExtractWorksetMode = true;
-            txtModeDescription.Text = "Extract Worksets Mode";
-            txtCurrentMode.Text = "Extract Mode: Extracts all available worksets into separate files";
 
-            // Hide Excel file selection and QC options (destination is still needed)
-            gridExcelFile.Visibility = Visibility.Collapsed;
-            stackPanelOptions.Visibility = Visibility.Collapsed;
+            // Update button styles
+            btnExtractMode.Style = (Style)FindResource("SegmentedButtonActive");
+            btnQcMode.Style = (Style)FindResource("SegmentedButton");
 
-            // Update button states
-            btnExtractWorksets.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 140, 0)); // Orange color
-            btnExtractWorksets.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White);
-            btnQcCheck.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 244, 250)); // Secondary color
-            btnQcCheck.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 51, 51)); // Dark text
+            // Update UI visibility
+            panelExcelFile.Visibility = Visibility.Collapsed;
+            panelOptions.Visibility = Visibility.Collapsed;
+
+            // Update description
+            txtModeDescription.Text = "Extracts all available worksets into separate files. Preserves existing workset organization without reorganization.";
+
+            // Update execute button
+            btnExecute.Content = "Extract Worksets";
 
             LogMessage("Switched to Extract Worksets mode");
         }
 
         private void OnLogUpdated(object sender, string message)
         {
-            // Thread-safe log update
             Dispatcher.Invoke(() =>
             {
                 txtLog.AppendText(message + Environment.NewLine);
                 txtLog.ScrollToEnd();
 
-                // Keep the status line short and informative
+                // Update status
                 if (!string.IsNullOrEmpty(message))
                 {
-                    // show the last log short text in status (trim timestamp)
                     int hyphenIndex = message.IndexOf(" - ");
                     string shortMsg = message;
                     if (hyphenIndex >= 0 && hyphenIndex + 3 < message.Length)
                         shortMsg = message.Substring(hyphenIndex + 3);
 
-                    txtStatus.Text = shortMsg.Length > 80 ? shortMsg.Substring(0, 77) + "..." : shortMsg;
+                    txtStatus.Text = shortMsg.Length > 60 ? shortMsg.Substring(0, 57) + "..." : shortMsg;
                 }
             });
         }
@@ -150,8 +174,10 @@ namespace WorksetOrchestrator
             bool? result = openFileDialog.ShowDialog();
             if (result == true)
             {
-                txtExcelPath.Text = openFileDialog.FileName;
-                LogMessage($"Selected Excel file: {System.IO.Path.GetFileName(openFileDialog.FileName)}");
+                txtExcelPath.Text = Path.GetFileName(openFileDialog.FileName);
+                txtExcelPath.Tag = openFileDialog.FileName; // Store full path
+                txtExcelPath.Foreground = (SolidColorBrush)FindResource("LabelPrimary");
+                LogMessage($"Selected Excel file: {Path.GetFileName(openFileDialog.FileName)}");
             }
         }
 
@@ -164,58 +190,57 @@ namespace WorksetOrchestrator
 
             if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                txtDestination.Text = folderDialog.SelectedPath;
+                txtDestination.Text = Path.GetFileName(folderDialog.SelectedPath);
+                txtDestination.Tag = folderDialog.SelectedPath; // Store full path
+                txtDestination.Foreground = (SolidColorBrush)FindResource("LabelPrimary");
                 LogMessage($"Selected destination: {folderDialog.SelectedPath}");
             }
         }
 
-        private async void BtnQcCheck_Click(object sender, RoutedEventArgs e)
+        private void BtnQcCheck_Click(object sender, RoutedEventArgs e)
         {
-            // Switch to QC mode if not already
-            if (_isExtractWorksetMode)
-            {
-                SetQcMode();
-                return;
-            }
-
-            // Run QC Check & Extraction
-            await RunQcCheckAndExtraction();
+            if (!_isExtractWorksetMode) return; // Already in QC mode
+            SetQcMode();
         }
 
-        private async void BtnExtractWorksets_Click(object sender, RoutedEventArgs e)
+        private void BtnExtractWorksets_Click(object sender, RoutedEventArgs e)
         {
-            // Switch to Extract mode if not already
-            if (!_isExtractWorksetMode)
-            {
-                SetExtractWorksetsMode();
-                return;
-            }
+            if (_isExtractWorksetMode) return; // Already in Extract mode
+            SetExtractWorksetsMode();
+        }
 
-            // Run Extract Worksets
-            await RunExtractWorksets();
+        private async void BtnExecute_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isExtractWorksetMode)
+            {
+                await RunExtractWorksets();
+            }
+            else
+            {
+                await RunQcCheckAndExtraction();
+            }
         }
 
         private async Task RunQcCheckAndExtraction()
         {
             // Validation for QC mode
-            if (string.IsNullOrEmpty(txtExcelPath.Text) || !File.Exists(txtExcelPath.Text))
+            string excelPath = txtExcelPath.Tag as string;
+            if (string.IsNullOrEmpty(excelPath) || !File.Exists(excelPath))
             {
-                System.Windows.MessageBox.Show("Please select a valid Excel file.", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert("Please select a valid Excel file.", "Configuration Required");
                 return;
             }
 
-            if (string.IsNullOrEmpty(txtDestination.Text) || !Directory.Exists(txtDestination.Text))
+            string destinationPath = txtDestination.Tag as string;
+            if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
-                System.Windows.MessageBox.Show("Please select a valid destination folder.", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert("Please select a valid destination folder.", "Configuration Required");
                 return;
             }
 
             if (!_uiDoc.Document.IsWorkshared)
             {
-                System.Windows.MessageBox.Show("The current document is not workshared. Please enable worksharing first.", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert("The current document is not workshared. Please enable worksharing first.", "Worksharing Required");
                 return;
             }
 
@@ -224,44 +249,39 @@ namespace WorksetOrchestrator
                 LogMessage("=== QC CHECK & EXTRACTION STARTED ===");
                 LogMessage("Reading Excel mapping file...");
 
-                var mapping = ExcelReader.ReadMapping(txtExcelPath.Text);
-                LogMessage($"Found {mapping.Count} mapping records.");
+                var mapping = ExcelReader.ReadMapping(excelPath);
+                LogMessage($"Found {mapping.Count} mapping records");
 
                 // Log mapping summary
-                foreach (var record in mapping.Take(5)) // Show first 5 for verification
+                foreach (var record in mapping.Take(3))
                 {
                     LogMessage($"  Pattern: '{record.SystemNameInModel}' → Workset: '{record.WorksetName}' → Package: '{record.ModelPackageCode}'");
                 }
-                if (mapping.Count > 5)
-                    LogMessage($"  ... and {mapping.Count - 5} more records.");
+                if (mapping.Count > 3)
+                    LogMessage($"  ... and {mapping.Count - 3} more records");
 
-                // Set parameters for the external event handler
-                _eventHandler.SetParameters(_orchestrator, mapping, txtDestination.Text,
+                _eventHandler.SetParameters(_orchestrator, mapping, destinationPath,
                     chkOverwrite.IsChecked == true, chkExportQc.IsChecked == true);
 
-                // Raise the external event to execute in Revit context
-                LogMessage("Starting workset orchestration in Revit context...");
+                LogMessage("Starting workset orchestration...");
                 _externalEvent.Raise();
 
-                // Wait for completion with timeout
                 await WaitForCompletionAsync();
             });
         }
 
         private async Task RunExtractWorksets()
         {
-            // Validation for Extract mode
-            if (string.IsNullOrEmpty(txtDestination.Text) || !Directory.Exists(txtDestination.Text))
+            string destinationPath = txtDestination.Tag as string;
+            if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
-                System.Windows.MessageBox.Show("Please select a valid destination folder.", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert("Please select a valid destination folder.", "Configuration Required");
                 return;
             }
 
             if (!_uiDoc.Document.IsWorkshared)
             {
-                System.Windows.MessageBox.Show("The current document is not workshared. Please enable worksharing first.", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert("The current document is not workshared. Please enable worksharing first.", "Worksharing Required");
                 return;
             }
 
@@ -270,89 +290,82 @@ namespace WorksetOrchestrator
                 LogMessage("=== EXTRACT WORKSETS STARTED ===");
                 LogMessage("Extracting all available worksets...");
 
-                // Set parameters for workset extraction mode
-                _eventHandler.SetWorksetExtractionParameters(_orchestrator, txtDestination.Text, true); // Always overwrite in extract mode
+                _eventHandler.SetWorksetExtractionParameters(_orchestrator, destinationPath, true);
 
-                // Raise the external event to execute in Revit context
-                LogMessage("Starting workset extraction in Revit context...");
+                LogMessage("Starting workset extraction...");
                 _externalEvent.Raise();
 
-                // Wait for completion with timeout
                 await WaitForCompletionAsync();
             });
         }
 
         private async Task ExecuteOperation(string operationName, Func<Task> operation)
         {
-            // Reset extracted files list and hide template button
             _extractedFiles.Clear();
             btnIntegrateTemplate.Visibility = Visibility.Collapsed;
-            _lastDestinationPath = txtDestination.Text;
+            _lastDestinationPath = txtDestination.Tag as string;
 
-            // Disable UI while running
-            btnQcCheck.IsEnabled = false;
-            btnExtractWorksets.IsEnabled = false;
+            // Disable UI
+            btnExecute.IsEnabled = false;
+            btnQcMode.IsEnabled = false;
+            btnExtractMode.IsEnabled = false;
             btnCancel.Content = "Close";
             txtLog.Clear();
 
             // Show progress
-            pbProgress.IsIndeterminate = true;
-            txtStatus.Text = "Initializing...";
+            UpdateProgress(0, "Initializing...");
 
             try
             {
                 await operation();
 
-                // After the wait, update UI based on result
-                pbProgress.IsIndeterminate = false;
-                pbProgress.Value = 100;
-
                 if (_eventHandler.Success)
                 {
+                    UpdateProgress(100, "Completed successfully");
                     LogMessage($"=== {operationName.ToUpper()} COMPLETED SUCCESSFULLY ===");
-                    txtStatus.Text = "Completed successfully";
 
-                    // Get list of extracted files for template integration
-                    _extractedFiles = GetExtractedFiles(txtDestination.Text);
-                    LogMessage($"Found {_extractedFiles.Count} extracted files for potential template integration.");
+                    _extractedFiles = GetExtractedFiles(_lastDestinationPath);
+                    LogMessage($"Found {_extractedFiles.Count} extracted files");
 
-                    // Show template integration button if there are extracted files
                     if (_extractedFiles.Count > 0)
                     {
                         btnIntegrateTemplate.Visibility = Visibility.Visible;
-                        LogMessage("Click 'Integrate into Template' to copy extracted elements into a template file.");
+                        LogMessage("Template integration is now available");
                     }
 
-                    System.Windows.MessageBox.Show($"{operationName} completed successfully!", "Success",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    ShowSuccess($"{operationName} completed successfully! Generated {_extractedFiles.Count} files.");
                 }
                 else
                 {
+                    UpdateProgress(0, "Completed with errors");
                     LogMessage($"=== {operationName.ToUpper()} COMPLETED WITH ERRORS ===");
-                    txtStatus.Text = "Completed with errors";
+
                     if (_eventHandler.LastException != null)
                     {
-                        LogMessage($"Last exception: {_eventHandler.LastException.Message}");
+                        LogMessage($"Error: {_eventHandler.LastException.Message}");
                     }
-                    System.Windows.MessageBox.Show($"{operationName} completed with errors. Check the log for details.",
-                        "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                    ShowAlert($"{operationName} completed with errors. Check the log for details.", "Processing Completed");
                 }
             }
             catch (Exception ex)
             {
+                UpdateProgress(0, "Error occurred");
                 LogMessage($"ERROR: {ex.Message}");
-                LogMessage($"Stack Trace: {ex.StackTrace}");
-                txtStatus.Text = "Error";
-                System.Windows.MessageBox.Show($"An error occurred: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert($"An error occurred: {ex.Message}", "Error");
             }
             finally
             {
-                btnQcCheck.IsEnabled = true;
-                btnExtractWorksets.IsEnabled = true;
+                // Re-enable UI
+                btnExecute.IsEnabled = true;
+                btnQcMode.IsEnabled = true;
+                btnExtractMode.IsEnabled = true;
                 btnCancel.Content = "Cancel";
-                pbProgress.IsIndeterminate = false;
-                pbProgress.Value = 0;
+
+                if (pbProgress.Value == 0)
+                {
+                    UpdateProgress(0, "Ready");
+                }
             }
         }
 
@@ -360,12 +373,10 @@ namespace WorksetOrchestrator
         {
             if (_extractedFiles.Count == 0)
             {
-                System.Windows.MessageBox.Show("No extracted files found for template integration.", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert("No extracted files found for template integration.", "No Files Available");
                 return;
             }
 
-            // Ask user to select template file
             var openFileDialog = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "Revit Files (*.rvt)|*.rvt|All Files (*.*)|*.*",
@@ -373,76 +384,64 @@ namespace WorksetOrchestrator
             };
 
             bool? result = openFileDialog.ShowDialog();
-            if (result != true)
-                return;
+            if (result != true) return;
 
             string templateFilePath = openFileDialog.FileName;
-            LogMessage($"Selected template file: {System.IO.Path.GetFileName(templateFilePath)}");
+            LogMessage($"Selected template: {Path.GetFileName(templateFilePath)}");
 
             // Disable UI during integration
             btnIntegrateTemplate.IsEnabled = false;
-            btnQcCheck.IsEnabled = false;
-            btnExtractWorksets.IsEnabled = false;
+            btnExecute.IsEnabled = false;
+            btnQcMode.IsEnabled = false;
+            btnExtractMode.IsEnabled = false;
             btnCancel.Content = "Close";
-            pbProgress.IsIndeterminate = true;
-            txtStatus.Text = "Integrating into template...";
+
+            UpdateProgress(0, "Integrating into template...");
 
             try
             {
                 LogMessage("=== TEMPLATE INTEGRATION STARTED ===");
-                LogMessage($"Template file: {templateFilePath}");
-                LogMessage($"Extracted files to integrate: {_extractedFiles.Count}");
+                LogMessage($"Template: {templateFilePath}");
+                LogMessage($"Files to integrate: {_extractedFiles.Count}");
 
-                // Set parameters for template integration
                 _eventHandler.SetTemplateIntegrationParameters(_orchestrator, _extractedFiles,
                     templateFilePath, _lastDestinationPath);
 
-                // Raise the external event to execute in Revit context
-                LogMessage("Starting template integration in Revit context...");
+                LogMessage("Starting template integration...");
                 _externalEvent.Raise();
 
-                // Wait for completion
                 await WaitForCompletionAsync();
-
-                // Update UI based on result
-                pbProgress.IsIndeterminate = false;
-                pbProgress.Value = 100;
 
                 if (_eventHandler.Success)
                 {
+                    UpdateProgress(100, "Template integration completed");
                     LogMessage("=== TEMPLATE INTEGRATION COMPLETED SUCCESSFULLY ===");
-                    txtStatus.Text = "Template integration completed";
-                    System.Windows.MessageBox.Show($"Template integration completed successfully!\n" +
-                        $"Integrated files are saved in the 'In Template' subfolder.", "Success",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    ShowSuccess("Template integration completed successfully!\nIntegrated files are saved in the 'In Template' subfolder.");
                 }
                 else
                 {
+                    UpdateProgress(0, "Template integration failed");
                     LogMessage("=== TEMPLATE INTEGRATION FAILED ===");
-                    txtStatus.Text = "Template integration failed";
                     if (_eventHandler.LastException != null)
                     {
                         LogMessage($"Error: {_eventHandler.LastException.Message}");
                     }
-                    System.Windows.MessageBox.Show("Template integration failed. Check the log for details.",
-                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    ShowAlert("Template integration failed. Check the log for details.", "Integration Failed");
                 }
             }
             catch (Exception ex)
             {
+                UpdateProgress(0, "Template integration error");
                 LogMessage($"ERROR during template integration: {ex.Message}");
-                txtStatus.Text = "Template integration error";
-                System.Windows.MessageBox.Show($"An error occurred during template integration: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowAlert($"An error occurred during template integration: {ex.Message}", "Error");
             }
             finally
             {
                 btnIntegrateTemplate.IsEnabled = true;
-                btnQcCheck.IsEnabled = true;
-                btnExtractWorksets.IsEnabled = true;
+                btnExecute.IsEnabled = true;
+                btnQcMode.IsEnabled = true;
+                btnExtractMode.IsEnabled = true;
                 btnCancel.Content = "Cancel";
-                pbProgress.IsIndeterminate = false;
-                pbProgress.Value = 0;
             }
         }
 
@@ -454,7 +453,6 @@ namespace WorksetOrchestrator
             {
                 if (Directory.Exists(destinationPath))
                 {
-                    // Look for RVT files that match the export pattern
                     var rvtFiles = Directory.GetFiles(destinationPath, "*_DX.rvt", SearchOption.TopDirectoryOnly);
                     extractedFiles.AddRange(rvtFiles);
                 }
@@ -469,29 +467,21 @@ namespace WorksetOrchestrator
 
         private async Task WaitForCompletionAsync()
         {
-            // Wait for the external event to complete with a reasonable timeout
-            int maxWaitTime = 600000; // 10 minutes for large models
-            int checkInterval = 500; // 500ms
+            int maxWaitTime = 600000; // 10 minutes
+            int checkInterval = 500;
             int totalWaited = 0;
             int lastLogTime = 0;
-
-            // Use determinate progress while waiting (progress = elapsed / max)
-            pbProgress.IsIndeterminate = false;
-            pbProgress.Minimum = 0;
-            pbProgress.Maximum = maxWaitTime;
-            pbProgress.Value = 0;
-            txtStatus.Text = "Processing...";
 
             while (!_eventHandler.IsComplete && totalWaited < maxWaitTime)
             {
                 await Task.Delay(checkInterval);
                 totalWaited += checkInterval;
 
-                // Update progress bar
+                // Update progress
                 Dispatcher.Invoke(() =>
                 {
-                    if (pbProgress.Maximum > 0)
-                        pbProgress.Value = Math.Min(totalWaited, (int)pbProgress.Maximum);
+                    double progressPercent = Math.Min((double)totalWaited / maxWaitTime * 100, 90);
+                    UpdateProgress(progressPercent, "Processing...");
                 });
 
                 // Log progress every 30 seconds
@@ -501,15 +491,21 @@ namespace WorksetOrchestrator
                     lastLogTime = totalWaited;
                 }
 
-                // Allow UI to update
                 System.Windows.Forms.Application.DoEvents();
             }
 
             if (totalWaited >= maxWaitTime)
             {
-                LogMessage("WARNING: Operation timed out after 10 minutes.");
-                txtStatus.Text = "Timed out";
+                LogMessage("WARNING: Operation timed out after 10 minutes");
+                UpdateProgress(0, "Timed out");
             }
+        }
+
+        private void UpdateProgress(double value, string status)
+        {
+            pbProgress.Value = value;
+            txtProgress.Text = $"{value:F0}%";
+            txtStatus.Text = status;
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
@@ -522,6 +518,16 @@ namespace WorksetOrchestrator
             string timestampedMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             txtLog.AppendText(timestampedMessage + Environment.NewLine);
             txtLog.ScrollToEnd();
+        }
+
+        private void ShowAlert(string message, string title)
+        {
+            System.Windows.MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        private void ShowSuccess(string message)
+        {
+            System.Windows.MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
