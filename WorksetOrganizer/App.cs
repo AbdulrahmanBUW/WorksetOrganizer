@@ -2,10 +2,8 @@
 using System.IO;
 using System.Reflection;
 using Autodesk.Revit.UI;
-using System.Windows.Media;
-using System.Windows; // Add this for FlowDirection
-using System.Globalization; // Add this for CultureInfo
-using OfficeOpenXml; // EPPlus
+using System.Windows;
+using System.Globalization;
 
 namespace WorksetOrchestrator
 {
@@ -13,22 +11,18 @@ namespace WorksetOrchestrator
     {
         public Result OnStartup(UIControlledApplication application)
         {
-            // Create a custom ribbon tab
             string tabName = "Workset Tools";
             try
             {
                 application.CreateRibbonTab(tabName);
             }
-            catch { } // Tab might already exist
+            catch { }
 
-            // Create a ribbon panel
             RibbonPanel panel = application.CreateRibbonPanel(tabName, "Organization");
 
-            // Get assembly path
             string assemblyPath = Assembly.GetExecutingAssembly().Location;
             string assemblyDirectory = Path.GetDirectoryName(assemblyPath);
 
-            // Create push button
             PushButtonData buttonData = new PushButtonData(
                 "WorksetOrganiser",
                 "Workset" + Environment.NewLine + "Organiser",
@@ -37,14 +31,11 @@ namespace WorksetOrchestrator
 
             buttonData.ToolTip = "Organizes worksets based on Excel mapping and export RVTs.";
 
-            // Try to set icons with better error handling
             try
             {
-                // Method 1: Try embedded resources first
                 buttonData.LargeImage = GetEmbeddedImage("WorksetOrganizer.Icons.WorksetOrganizer_32x32.png");
                 buttonData.Image = GetEmbeddedImage("WorksetOrganizer.Icons.WorksetOrganizer_16x16.png");
 
-                // Method 2: If embedded resources fail, try file paths
                 if (buttonData.LargeImage == null || buttonData.Image == null)
                 {
                     string iconPath32 = Path.Combine(assemblyDirectory, "Icons", "WorksetOrganizer_32x32.png");
@@ -61,7 +52,6 @@ namespace WorksetOrchestrator
                     }
                 }
 
-                // Method 3: Use a simple built-in icon as fallback
                 if (buttonData.LargeImage == null && buttonData.Image == null)
                 {
                     // Create a simple colored rectangle as fallback
@@ -71,15 +61,12 @@ namespace WorksetOrchestrator
             }
             catch (Exception ex)
             {
-                // Log the error for debugging
                 System.Diagnostics.Debug.WriteLine($"Icon loading failed: {ex.Message}");
 
-                // Use fallback icon
                 buttonData.LargeImage = CreateFallbackIcon(32);
                 buttonData.Image = CreateFallbackIcon(16);
             }
 
-            // Add button to panel
             PushButton button = panel.AddItem(buttonData) as PushButton;
 
             return Result.Succeeded;
@@ -90,7 +77,6 @@ namespace WorksetOrchestrator
             return Result.Succeeded;
         }
 
-        // Helper method to load embedded images
         private System.Windows.Media.ImageSource GetEmbeddedImage(string resourceName)
         {
             try
@@ -115,7 +101,6 @@ namespace WorksetOrchestrator
             return null;
         }
 
-        // Create a simple fallback icon
         private System.Windows.Media.ImageSource CreateFallbackIcon(int size)
         {
             try
@@ -123,12 +108,10 @@ namespace WorksetOrchestrator
                 var drawingVisual = new System.Windows.Media.DrawingVisual();
                 using (var context = drawingVisual.RenderOpen())
                 {
-                    // Draw a simple colored rectangle with "WO" text
-                    var brush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 120, 215)); // Blue color
+                    var brush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 120, 215));
                     var rect = new System.Windows.Rect(0, 0, size, size);
                     context.DrawRectangle(brush, null, rect);
 
-                    // Add text
                     var formattedText = new System.Windows.Media.FormattedText(
                         "WO",
                         CultureInfo.GetCultureInfo("en-us"),

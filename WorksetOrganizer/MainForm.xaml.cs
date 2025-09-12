@@ -5,11 +5,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Forms; // Only for FolderBrowserDialog
+using System.Windows.Forms;
 using System.Collections.Generic;
 using System.Windows.Media;
-using System.Windows.Data;
-using System.Globalization;
 
 namespace WorksetOrchestrator
 {
@@ -31,11 +29,9 @@ namespace WorksetOrchestrator
             _orchestrator = new WorksetOrchestrator(uiDoc);
             _orchestrator.LogUpdated += OnLogUpdated;
 
-            // Create external event handler for API calls
             _eventHandler = new WorksetEventHandler();
             _externalEvent = ExternalEvent.Create(_eventHandler);
 
-            // Set Revit as owner window via handle if available
             try
             {
                 if (revitMainWindowHandle != IntPtr.Zero)
@@ -52,10 +48,8 @@ namespace WorksetOrchestrator
             }
             catch
             {
-                // Owner window is optional
             }
 
-            // Initialize UI
             InitializeInterface();
         }
 
@@ -66,13 +60,10 @@ namespace WorksetOrchestrator
             txtProgress.Text = "0%";
             btnIntegrateTemplate.Visibility = Visibility.Collapsed;
 
-            // Set placeholder text for TextBox (Excel file)
             SetPlaceholderText(txtExcelPath, "Select mapping Excel file...");
 
-            // Set placeholder text for Label (Destination)
             SetPlaceholderLabel(lblDestination, "Select destination folder...");
 
-            // Log initial information
             try
             {
                 LogMessage($"Document: {_uiDoc.Document.Title}");
@@ -84,24 +75,23 @@ namespace WorksetOrchestrator
                 LogMessage($"Warning reading document info: {ex.Message}");
             }
 
-            // Initialize in QC mode
             SetQcMode();
         }
 
         private void SetPlaceholderText(System.Windows.Controls.TextBox textBox, string placeholder)
         {
             textBox.Text = placeholder;
-            textBox.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102)); // #666666
+            textBox.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102));
             textBox.FontStyle = FontStyles.Italic;
-            textBox.Tag = null; // No file selected initially
+            textBox.Tag = null;
         }
 
         private void SetPlaceholderLabel(System.Windows.Controls.Label label, string placeholder)
         {
             label.Content = placeholder;
-            label.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102)); // #666666
+            label.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102));
             label.FontStyle = FontStyles.Italic;
-            label.Tag = null; // No folder selected initially
+            label.Tag = null;
         }
 
         private void SetSelectedText(System.Windows.Controls.TextBox textBox, string displayText, string fullPath)
@@ -132,18 +122,14 @@ namespace WorksetOrchestrator
         {
             _isExtractWorksetMode = false;
 
-            // Update button styles
             btnQcMode.Style = (Style)FindResource("SegmentedButtonActive");
             btnExtractMode.Style = (Style)FindResource("SegmentedButton");
 
-            // Update UI visibility
             panelExcelFile.Visibility = Visibility.Visible;
             panelOptions.Visibility = Visibility.Visible;
 
-            // Update description
             txtModeDescription.Text = "Organizes and validates worksets based on Excel mapping. Elements are categorized by system patterns and moved to appropriate worksets before export.";
 
-            // Update execute button
             btnExecute.Content = "Start QC & Extraction";
 
             LogMessage("Switched to QC Check & Extraction mode");
@@ -153,18 +139,14 @@ namespace WorksetOrchestrator
         {
             _isExtractWorksetMode = true;
 
-            // Update button styles
             btnExtractMode.Style = (Style)FindResource("SegmentedButtonActive");
             btnQcMode.Style = (Style)FindResource("SegmentedButton");
 
-            // Update UI visibility
             panelExcelFile.Visibility = Visibility.Collapsed;
             panelOptions.Visibility = Visibility.Collapsed;
 
-            // Update description
             txtModeDescription.Text = "Extracts all available worksets into separate files. Preserves existing workset organization without reorganization.";
 
-            // Update execute button
             btnExecute.Content = "Extract Worksets";
 
             LogMessage("Switched to Extract Worksets mode");
@@ -177,7 +159,6 @@ namespace WorksetOrchestrator
                 txtLog.AppendText(message + Environment.NewLine);
                 txtLog.ScrollToEnd();
 
-                // Update status
                 if (!string.IsNullOrEmpty(message))
                 {
                     int hyphenIndex = message.IndexOf(" - ");
@@ -201,7 +182,6 @@ namespace WorksetOrchestrator
             bool? result = openFileDialog.ShowDialog();
             if (result == true)
             {
-                // Update the TextBox for Excel file selection
                 SetSelectedText(txtExcelPath, Path.GetFileName(openFileDialog.FileName), openFileDialog.FileName);
                 LogMessage($"Selected Excel file: {Path.GetFileName(openFileDialog.FileName)}");
             }
@@ -216,7 +196,6 @@ namespace WorksetOrchestrator
 
             if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                // Update the Label for destination folder selection
                 SetSelectedLabel(lblDestination, Path.GetFileName(folderDialog.SelectedPath), folderDialog.SelectedPath);
                 LogMessage($"Selected destination: {folderDialog.SelectedPath}");
             }
@@ -224,13 +203,13 @@ namespace WorksetOrchestrator
 
         private void BtnQcCheck_Click(object sender, RoutedEventArgs e)
         {
-            if (!_isExtractWorksetMode) return; // Already in QC mode
+            if (!_isExtractWorksetMode) return;
             SetQcMode();
         }
 
         private void BtnExtractWorksets_Click(object sender, RoutedEventArgs e)
         {
-            if (_isExtractWorksetMode) return; // Already in Extract mode
+            if (_isExtractWorksetMode) return;
             SetExtractWorksetsMode();
         }
 
@@ -245,10 +224,8 @@ namespace WorksetOrchestrator
                 await RunQcCheckAndExtraction();
             }
         }
-
         private async Task RunQcCheckAndExtraction()
         {
-            // Validation for QC mode - get from TextBox
             string excelPath = txtExcelPath.Tag as string;
             if (string.IsNullOrEmpty(excelPath) || !File.Exists(excelPath))
             {
@@ -256,7 +233,6 @@ namespace WorksetOrchestrator
                 return;
             }
 
-            // Validation for destination - get from Label
             string destinationPath = lblDestination.Tag as string;
             if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
@@ -278,7 +254,6 @@ namespace WorksetOrchestrator
                 var mapping = ExcelReader.ReadMapping(excelPath);
                 LogMessage($"Found {mapping.Count} mapping records");
 
-                // Log mapping summary
                 foreach (var record in mapping.Take(3))
                 {
                     LogMessage($"  Pattern: '{record.SystemNameInModel}' → Workset: '{record.WorksetName}' → Package: '{record.ModelPackageCode}'");
@@ -298,7 +273,6 @@ namespace WorksetOrchestrator
 
         private async Task RunExtractWorksets()
         {
-            // Validation for destination - get from Label
             string destinationPath = lblDestination.Tag as string;
             if (string.IsNullOrEmpty(destinationPath) || !Directory.Exists(destinationPath))
             {
@@ -330,16 +304,14 @@ namespace WorksetOrchestrator
         {
             _extractedFiles.Clear();
             btnIntegrateTemplate.Visibility = Visibility.Collapsed;
-            _lastDestinationPath = lblDestination.Tag as string; // Updated to use Label
+            _lastDestinationPath = lblDestination.Tag as string;
 
-            // Disable UI
             btnExecute.IsEnabled = false;
             btnQcMode.IsEnabled = false;
             btnExtractMode.IsEnabled = false;
             btnCancel.Content = "Close";
             txtLog.Clear();
 
-            // Show progress
             UpdateProgress(0, "Initializing...");
 
             try
@@ -383,7 +355,6 @@ namespace WorksetOrchestrator
             }
             finally
             {
-                // Re-enable UI
                 btnExecute.IsEnabled = true;
                 btnQcMode.IsEnabled = true;
                 btnExtractMode.IsEnabled = true;
@@ -416,7 +387,6 @@ namespace WorksetOrchestrator
             string templateFilePath = openFileDialog.FileName;
             LogMessage($"Selected template: {Path.GetFileName(templateFilePath)}");
 
-            // Disable UI during integration
             btnIntegrateTemplate.IsEnabled = false;
             btnExecute.IsEnabled = false;
             btnQcMode.IsEnabled = false;
@@ -471,7 +441,6 @@ namespace WorksetOrchestrator
                 btnCancel.Content = "Cancel";
             }
         }
-
         private List<string> GetExtractedFiles(string destinationPath)
         {
             var extractedFiles = new List<string>();
@@ -494,7 +463,7 @@ namespace WorksetOrchestrator
 
         private async Task WaitForCompletionAsync()
         {
-            int maxWaitTime = 600000; // 10 minutes
+            int maxWaitTime = 600000;
             int checkInterval = 500;
             int totalWaited = 0;
             int lastLogTime = 0;
@@ -504,20 +473,17 @@ namespace WorksetOrchestrator
                 await Task.Delay(checkInterval);
                 totalWaited += checkInterval;
 
-                // Update progress
                 Dispatcher.Invoke(() =>
                 {
                     double progressPercent = Math.Min((double)totalWaited / maxWaitTime * 100, 90);
                     UpdateProgress(progressPercent, "Processing...");
                 });
 
-                // Log progress every 30 seconds
                 if (totalWaited - lastLogTime >= 30000)
                 {
                     LogMessage($"Processing... ({totalWaited / 1000} seconds elapsed)");
                     lastLogTime = totalWaited;
                 }
-
                 System.Windows.Forms.Application.DoEvents();
             }
 
@@ -559,11 +525,9 @@ namespace WorksetOrchestrator
 
         private void txtExcelPath_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
-            // Empty event handler - required by XAML
         }
     }
 
-    // Helper class to get Revit's main window handle safely
     public static class RevitWindow
     {
         public static System.Windows.Window GetRevitWindow()

@@ -14,16 +14,13 @@ namespace WorksetOrchestrator
             if (!File.Exists(excelFilePath))
                 throw new FileNotFoundException($"Excel file not found: {excelFilePath}");
 
-            // EPPlus 4.x doesn't need LicenseContext - remove this line completely
             using (var package = new ExcelPackage(new FileInfo(excelFilePath)))
             {
                 if (package.Workbook.Worksheets.Count == 0)
                     throw new Exception("Excel file contains no worksheets.");
 
-                // Try to find the 'Mapping' worksheet, or use the first one
                 ExcelWorksheet worksheet = null;
 
-                // Case-insensitive search for 'Mapping' worksheet
                 foreach (var ws in package.Workbook.Worksheets)
                 {
                     if (ws.Name.Equals("Mapping", StringComparison.OrdinalIgnoreCase))
@@ -33,9 +30,8 @@ namespace WorksetOrchestrator
                     }
                 }
 
-                // If no 'Mapping' worksheet found, use the first one
                 if (worksheet == null)
-                    worksheet = package.Workbook.Worksheets[1]; // EPPlus worksheets are 1-indexed
+                    worksheet = package.Workbook.Worksheets[1];
 
                 if (worksheet == null)
                     throw new Exception("No accessible worksheet found in Excel file.");
@@ -49,7 +45,6 @@ namespace WorksetOrchestrator
                 if (rowCount < 2)
                     throw new Exception("Excel file must contain at least a header row and one data row.");
 
-                // Find header indices
                 var headers = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 for (int col = 1; col <= colCount; col++)
                 {
@@ -59,7 +54,6 @@ namespace WorksetOrchestrator
                         headers[headerValue] = col;
                 }
 
-                // Required headers (case-insensitive)
                 string[] requiredHeaders = { "Workset Name", "System Name in Model File", "System Description", "Model iFLS/Package Code" };
                 var missingHeaders = new List<string>();
 
@@ -83,7 +77,6 @@ namespace WorksetOrchestrator
                         ModelPackageCode = GetCellValue(worksheet, row, headers["Model iFLS/Package Code"])
                     };
 
-                    // Only add records with valid workset name and system name (unless it's a special case)
                     if (!string.IsNullOrEmpty(record.WorksetName) &&
                         (!string.IsNullOrEmpty(record.SystemNameInModel) || record.ModelPackageCode == "NO EXPORT"))
                     {
