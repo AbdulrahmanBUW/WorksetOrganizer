@@ -1,10 +1,7 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using Autodesk.Revit.ApplicationServices;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.IO;
 
 namespace WorksetOrchestrator
 {
@@ -88,7 +85,6 @@ namespace WorksetOrchestrator
             {
                 if (_isTemplateIntegration)
                 {
-                    // When doing template integration, orchestrator will handle SafeOpenDocument internally
                     _orchestrator.LogMessage($"Event handler: starting template integration for {_extractedFiles?.Count ?? 0} files.");
                     _success = _orchestrator.IntegrateIntoTemplate(_extractedFiles, _templateFilePath, _destinationPath);
                 }
@@ -107,7 +103,6 @@ namespace WorksetOrchestrator
             {
                 _success = false;
                 _lastException = ex;
-                // Log the error through the orchestrator
                 _orchestrator?.LogMessage($"ERROR in event handler: {ex.Message}");
                 _orchestrator?.LogMessage($"Stack Trace: {ex.StackTrace}");
             }
@@ -123,15 +118,10 @@ namespace WorksetOrchestrator
         }
     }
 
-    /// <summary>
-    /// Handler for duplicate type names during copy operations
-    /// Automatically handles duplicate types without showing dialogs
-    /// </summary>
     public class DuplicateTypeNamesHandler : IDuplicateTypeNamesHandler
     {
         public DuplicateTypeAction OnDuplicateTypeNamesFound(DuplicateTypeNamesHandlerArgs args)
         {
-            // Automatically use existing types from destination document
             return DuplicateTypeAction.UseDestinationTypes;
         }
     }

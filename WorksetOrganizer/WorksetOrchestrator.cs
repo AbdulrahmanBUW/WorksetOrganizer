@@ -15,6 +15,8 @@ namespace WorksetOrchestrator
         private Document _doc;
         private UIDocument _uiDoc;
         private StringBuilder _log = new StringBuilder();
+        
+        
         /// <summary>
         /// Mapping of workset names to iFLS codes
         /// </summary>
