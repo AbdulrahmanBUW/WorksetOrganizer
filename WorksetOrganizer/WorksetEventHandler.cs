@@ -16,12 +16,10 @@ namespace WorksetOrchestrator
         private bool _success;
         private Exception _lastException;
 
-        // Template integration parameters
         private bool _isTemplateIntegration;
         private List<string> _extractedFiles;
         private string _templateFilePath;
 
-        // Workset extraction parameters
         private bool _isWorksetExtraction;
 
         public bool IsComplete => _isComplete;

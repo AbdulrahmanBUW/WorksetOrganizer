@@ -66,7 +66,6 @@ namespace WorksetOrchestrator
                 if (missingHeaders.Count > 0)
                     throw new Exception($"Required headers not found: {string.Join(", ", missingHeaders)}. Available headers: {string.Join(", ", headers.Keys)}");
 
-                // Read data rows
                 for (int row = 2; row <= rowCount; row++)
                 {
                     var record = new MappingRecord
