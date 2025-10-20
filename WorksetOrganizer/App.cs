@@ -54,7 +54,6 @@ namespace WorksetOrchestrator
 
                 if (buttonData.LargeImage == null && buttonData.Image == null)
                 {
-                    // Create a simple colored rectangle as fallback
                     buttonData.LargeImage = CreateFallbackIcon(32);
                     buttonData.Image = CreateFallbackIcon(16);
                 }
