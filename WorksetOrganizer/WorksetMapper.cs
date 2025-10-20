@@ -24,7 +24,7 @@ namespace WorksetOrchestrator
                 {"DX_CDA", "D-D"},
                 {"DX_CHM", "C-S"},
                 {"DX_CKE", "C-L"},
-                {"DX_ELT", "E-X"},
+                {"DX_ELT", "E-S"},
                 {"DX_EXH", "A-X"},
                 {"DX_PAW", "S-D"},
                 {"DX_PG", "G-B"},
@@ -33,11 +33,11 @@ namespace WorksetOrchestrator
                 {"DX_PWI", "U-D"},
                 {"DX_VAC", "V-D"},
                 {"DX_SLUR", "M-S"},
-                {"DX_STB", "S-T"},
+                {"DX_STB", "STB"},
                 {"DX_UPW", "U-D"},
                 {"DX_PVAC", "V-V"},
-                {"DX_RR", "R-R"},
-                {"DX_FND", "F-D"},
+                {"DX_RR", "RR"},
+                {"DX_FND", "FND"},
                 {"DX_Sub-tool", "S-BT"},
                 {"DX_Tool", "T-L"}
             };
@@ -62,7 +62,7 @@ namespace WorksetOrchestrator
                 {"V-D", "V-D"},
                 {"M-S", "M-S"},
                 {"V-V", "V-V"},
-                {"S-T", "S-T"}
+                {"STB", "STB"}
             };
         }
 
