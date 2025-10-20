@@ -107,21 +107,40 @@ namespace WorksetOrchestrator
                 LogMessage("=== WORKSET EXTRACTION MODE ===");
                 LogMessage("Analyzing available worksets...");
 
+                // Define worksets to exclude from extraction
+                var excludedWorksets = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "DX_Sub-tool",
+            "DX_Tool",
+            "DX_FND",
+            "XXX_GENERAL",
+            "XXX_Hidden",
+            "XXX_Links_CAD",
+            "XXX_Links_NWD",
+            "XXX_Links_Revit",
+            "XXX_Shared levels and Grids"
+        };
+
                 var allWorksets = new FilteredWorksetCollector(_doc)
                     .OfKind(WorksetKind.UserWorkset)
                     .Where(w => w.Kind == WorksetKind.UserWorkset)
                     .ToList();
 
                 LogMessage($"Found {allWorksets.Count} user worksets in the model:");
-                foreach (var workset in allWorksets)
-                {
-                    LogMessage($"  - {workset.Name} (ID: {workset.Id})");
-                }
 
                 var worksetElementMapping = new Dictionary<string, List<ElementId>>();
+                int excludedCount = 0;
 
                 foreach (var workset in allWorksets)
                 {
+                    // Skip excluded worksets
+                    if (excludedWorksets.Contains(workset.Name))
+                    {
+                        LogMessage($"Skipping excluded workset: {workset.Name}");
+                        excludedCount++;
+                        continue;
+                    }
+
                     LogMessage($"Collecting elements for workset: {workset.Name}");
 
                     var elementsInWorkset = new FilteredElementCollector(_doc)
@@ -151,6 +170,7 @@ namespace WorksetOrchestrator
                 }
 
                 LogMessage($"Worksets with relevant elements: {worksetElementMapping.Count}");
+                LogMessage($"Excluded worksets: {excludedCount}");
 
                 _worksetManager.SynchronizeWithCentral();
                 _exportService.ExportWorksetRVTs(worksetElementMapping, destinationPath, overwriteFiles);
