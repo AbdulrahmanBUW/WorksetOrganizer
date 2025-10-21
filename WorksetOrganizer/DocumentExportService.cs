@@ -26,6 +26,11 @@ namespace WorksetOrchestrator
         public void ExportRVTs(Dictionary<string, List<ElementId>> packageGroups, string destinationPath, bool overwrite, bool exportQc)
         {
             string projectPrefix = Path.GetFileNameWithoutExtension(_doc.PathName);
+            if (string.IsNullOrEmpty(projectPrefix))
+            {
+                projectPrefix = _doc.Title;
+            }
+
             if (projectPrefix.Contains('_'))
                 projectPrefix = projectPrefix.Split('_')[0];
 
@@ -75,6 +80,11 @@ namespace WorksetOrchestrator
         public void ExportWorksetRVTs(Dictionary<string, List<ElementId>> worksetMapping, string destinationPath, bool overwrite)
         {
             string projectPrefix = Path.GetFileNameWithoutExtension(_doc.PathName);
+            if (string.IsNullOrEmpty(projectPrefix))
+            {
+                projectPrefix = _doc.Title;
+            }
+
             if (projectPrefix.Contains('_'))
                 projectPrefix = projectPrefix.Split('_')[0];
 
@@ -188,7 +198,7 @@ namespace WorksetOrchestrator
 
                 _logAction($"Created temporary new project document for export '{group.Key}'.");
 
-                var sourceElementIds = group.Value.Where(id => id != null).Distinct().ToList();
+                var sourceElementIds = group.Value.Where(id => id != null && id != ElementId.InvalidElementId).Distinct().ToList();
 
                 if (!sourceElementIds.Any())
                 {
@@ -293,6 +303,15 @@ namespace WorksetOrchestrator
 
                 _logAction($"Created temporary document for workset '{worksetName}' with {elementIds.Count} elements");
 
+                // Validate element IDs
+                var validElementIds = elementIds.Where(id => id != null && id != ElementId.InvalidElementId).ToList();
+                if (!validElementIds.Any())
+                {
+                    _logAction($"No valid element IDs for workset '{worksetName}' - skipping.");
+                    try { newDoc.Close(false); } catch { }
+                    return false;
+                }
+
                 ICollection<ElementId> copiedIds = null;
                 try
                 {
@@ -305,7 +324,7 @@ namespace WorksetOrchestrator
 
                         copiedIds = ElementTransformUtils.CopyElements(
                             _doc,
-                            elementIds,
+                            validElementIds,
                             newDoc,
                             Transform.Identity,
                             copyOptions
