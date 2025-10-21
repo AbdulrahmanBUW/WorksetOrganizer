@@ -122,6 +122,7 @@ namespace WorksetOrchestrator
 
                 var collectorService = new ElementCollectorService(extractedDoc, _logAction);
                 var mepElements = collectorService.GetAllMepElementsFromDocument(extractedDoc);
+
                 _logAction($"Found {mepElements.Count} MEP elements in extracted file.");
 
                 if (mepElements.Count == 0)
@@ -135,7 +136,11 @@ namespace WorksetOrchestrator
 
                 var elementIds = mepElements.Select(e => e.Id).ToList();
 
-                ICollection<ElementId> copied = CopyElementsToTemplate(templateDoc, extractedDoc, elementIds, extractedFilePath);
+                string sourceFileName = Path.GetFileNameWithoutExtension(extractedFilePath);
+                string worksetName = ExtractWorksetNameFromFileName(sourceFileName);
+                _logAction($"Extracted workset name '{worksetName}' from file name '{sourceFileName}'");
+
+                ICollection<ElementId> copied = CopyElementsToTemplate(templateDoc, extractedDoc, elementIds, worksetName);
 
                 if (copied == null || !copied.Any())
                 {
@@ -215,7 +220,7 @@ namespace WorksetOrchestrator
             }
         }
 
-        private ICollection<ElementId> CopyElementsToTemplate(Document templateDoc, Document extractedDoc, List<ElementId> elementIds, string extractedFilePath)
+        private ICollection<ElementId> CopyElementsToTemplate(Document templateDoc, Document extractedDoc, List<ElementId> elementIds, string targetWorksetName)
         {
             _logAction("Starting copy transaction on template copy...");
             using (Transaction t = new Transaction(templateDoc, "Copy MEP elements into temp template"))
@@ -235,15 +240,10 @@ namespace WorksetOrchestrator
 
                     _logAction($"Copied {copied?.Count ?? 0} elements into template copy.");
 
-                    string sourceFileName = Path.GetFileNameWithoutExtension(extractedFilePath);
-                    string worksetName = ExtractWorksetNameFromFileName(sourceFileName);
-
-                    _logAction($"Extracted workset name '{worksetName}' from file name '{sourceFileName}'");
-
-                    if (!string.IsNullOrEmpty(worksetName) && copied != null && copied.Any())
+                    if (!string.IsNullOrEmpty(targetWorksetName) && copied != null && copied.Any())
                     {
                         var worksetManager = new WorksetManager(templateDoc, _logAction);
-                        worksetManager.AssignElementsToWorkset(templateDoc, copied.ToList(), worksetName);
+                        worksetManager.AssignElementsToWorkset(templateDoc, copied.ToList(), targetWorksetName);
                     }
 
                     t.Commit();
@@ -321,37 +321,13 @@ namespace WorksetOrchestrator
                 {
                     string iflsCode = parts[1];
 
-                    var worksetToIflsMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                    {
-                        {"DX_BDA", "B-D"},
-                        {"DX_CDA", "D-D"},
-                        {"DX_CHM", "C-S"},
-                        {"DX_CKE", "C-L"},
-                        {"DX_ELT", "E-X"},
-                        {"DX_EXH", "A-X"},
-                        {"DX_PAW", "S-D"},
-                        {"DX_PG", "G-B"},
-                        {"DX_PKW", "P-D"},
-                        {"DX_PS", "G-S"},
-                        {"DX_PWI", "U-D"},
-                        {"DX_VAC", "V-D"},
-                        {"DX_SLUR", "M-S"},
-                        {"DX_STB", "S-T"},
-                        {"DX_UPW", "U-D"},
-                        {"DX_PVAC", "V-V"},
-                        {"DX_RR", "R-R"},
-                        {"DX_FND", "F-D"},
-                        {"DX_Sub-tool", "S-BT"},
-                        {"DX_Tool", "T-L"}
-                    };
+                    // Use WorksetMapper for reverse lookup
+                    string worksetName = _worksetMapper.GetWorksetNameFromIflsCode(iflsCode);
 
-                    foreach (var kvp in worksetToIflsMapping)
+                    if (!string.IsNullOrEmpty(worksetName) && worksetName != "DX_Unknown")
                     {
-                        if (kvp.Value.Equals(iflsCode, StringComparison.OrdinalIgnoreCase))
-                        {
-                            _logAction($"Mapped iFLS code '{iflsCode}' back to workset '{kvp.Key}'");
-                            return kvp.Key;
-                        }
+                        _logAction($"Mapped iFLS code '{iflsCode}' to workset '{worksetName}'");
+                        return worksetName;
                     }
 
                     _logAction($"Warning: Could not find workset for iFLS code '{iflsCode}'");

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 
@@ -17,6 +18,12 @@ namespace WorksetOrchestrator
 
         public WorksetId GetOrCreateWorkset(string worksetName)
         {
+            if (!_doc.IsWorkshared)
+            {
+                _logAction($"WARNING: Document is not workshared. Cannot create workset '{worksetName}'");
+                return WorksetId.InvalidWorksetId;
+            }
+
             Workset workset = new FilteredWorksetCollector(_doc)
                 .OfKind(WorksetKind.UserWorkset)
                 .FirstOrDefault(w => w.Name.Equals(worksetName, StringComparison.CurrentCultureIgnoreCase));
@@ -39,6 +46,18 @@ namespace WorksetOrchestrator
 
         public WorksetId GetOrCreateWorksetInDocument(Document doc, string worksetName)
         {
+            if (doc == null)
+            {
+                _logAction($"ERROR: Document is null. Cannot create workset '{worksetName}'");
+                return WorksetId.InvalidWorksetId;
+            }
+
+            if (!doc.IsWorkshared)
+            {
+                _logAction($"WARNING: Target document is not workshared. Cannot create workset '{worksetName}'");
+                return WorksetId.InvalidWorksetId;
+            }
+
             try
             {
                 Workset workset = new FilteredWorksetCollector(doc)
@@ -46,7 +65,10 @@ namespace WorksetOrchestrator
                     .FirstOrDefault(w => w.Name.Equals(worksetName, StringComparison.CurrentCultureIgnoreCase));
 
                 if (workset != null)
+                {
+                    _logAction($"Found existing workset in target document: {worksetName}");
                     return workset.Id;
+                }
 
                 var newWorkset = Workset.Create(doc, worksetName);
                 _logAction($"Created new workset in target document: {worksetName}");
@@ -59,10 +81,13 @@ namespace WorksetOrchestrator
             }
         }
 
-        public void AssignElementsToWorkset(Document targetDoc, System.Collections.Generic.List<ElementId> copiedElementIds, string worksetName)
+        public void AssignElementsToWorkset(Document targetDoc, List<ElementId> copiedElementIds, string worksetName)
         {
             if (copiedElementIds == null || !copiedElementIds.Any())
+            {
+                _logAction($"No elements to assign to workset '{worksetName}'");
                 return;
+            }
 
             try
             {
@@ -76,47 +101,51 @@ namespace WorksetOrchestrator
 
                 WorksetId targetWorksetId = GetOrCreateWorksetInDocument(targetDoc, worksetName);
 
-                if (targetWorksetId != WorksetId.InvalidWorksetId)
-                {
-                    int assignedCount = 0;
-                    int genericModelCount = 0;
-
-                    foreach (var elementId in copiedElementIds)
-                    {
-                        try
-                        {
-                            Element element = targetDoc.GetElement(elementId);
-                            if (element != null)
-                            {
-                                if (element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_GenericModel)
-                                {
-                                    genericModelCount++;
-                                    _logAction($"  Assigning Generic Model {element.Id} to workset '{worksetName}'");
-                                }
-
-                                var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
-                                if (worksetParam != null && !worksetParam.IsReadOnly)
-                                {
-                                    worksetParam.Set(targetWorksetId.IntegerValue);
-                                    assignedCount++;
-                                }
-                                else
-                                {
-                                    _logAction($"  Warning: Cannot assign element {element.Id} to workset (parameter readonly or missing)");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logAction($"Warning: Could not assign element {elementId} to workset: {ex.Message}");
-                        }
-                    }
-
-                    _logAction($"Successfully assigned {assignedCount} elements (including {genericModelCount} Generic Models) to workset '{worksetName}' in template");
-                }
-                else
+                if (targetWorksetId == WorksetId.InvalidWorksetId)
                 {
                     _logAction($"Could not create/find workset '{worksetName}' in template document");
+                    return;
+                }
+
+                int assignedCount = 0;
+                int readonlyCount = 0;
+                int genericModelCount = 0;
+
+                foreach (var elementId in copiedElementIds)
+                {
+                    try
+                    {
+                        Element element = targetDoc.GetElement(elementId);
+                        if (element != null)
+                        {
+                            if (element.Category?.Id.IntegerValue == (int)BuiltInCategory.OST_GenericModel)
+                            {
+                                genericModelCount++;
+                            }
+
+                            var worksetParam = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                            if (worksetParam != null && !worksetParam.IsReadOnly)
+                            {
+                                worksetParam.Set(targetWorksetId.IntegerValue);
+                                assignedCount++;
+                            }
+                            else
+                            {
+                                readonlyCount++;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logAction($"Warning: Could not assign element {elementId} to workset: {ex.Message}");
+                        readonlyCount++;
+                    }
+                }
+
+                _logAction($"Successfully assigned {assignedCount} elements (including {genericModelCount} Generic Models) to workset '{worksetName}' in template");
+                if (readonlyCount > 0)
+                {
+                    _logAction($"  {readonlyCount} elements could not be assigned (readonly or missing parameter)");
                 }
             }
             catch (Exception ex)

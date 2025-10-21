@@ -8,11 +8,13 @@ namespace WorksetOrchestrator
     public class WorksetMapper
     {
         private readonly Dictionary<string, string> _worksetToIflsMapping;
+        private readonly Dictionary<string, string> _iflsToWorksetMapping;
         private readonly Dictionary<string, string> _packageToIflsMapping;
 
         public WorksetMapper()
         {
             _worksetToIflsMapping = InitializeWorksetToIflsMapping();
+            _iflsToWorksetMapping = InitializeIflsToWorksetMapping();
             _packageToIflsMapping = InitializePackageToIflsMapping();
         }
 
@@ -43,6 +45,21 @@ namespace WorksetOrchestrator
             };
         }
 
+        private Dictionary<string, string> InitializeIflsToWorksetMapping()
+        {
+            var reverseMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in _worksetToIflsMapping)
+            {
+                if (!reverseMapping.ContainsKey(kvp.Value))
+                {
+                    reverseMapping[kvp.Value] = kvp.Key;
+                }
+            }
+
+            return reverseMapping;
+        }
+
         private Dictionary<string, string> InitializePackageToIflsMapping()
         {
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -62,7 +79,11 @@ namespace WorksetOrchestrator
                 {"V-D", "V-D"},
                 {"M-S", "M-S"},
                 {"V-V", "V-V"},
-                {"STB", "STB"}
+                {"STB", "STB"},
+                {"RR", "RR"},
+                {"FND", "FND"},
+                {"S-BT", "S-BT"},
+                {"T-L", "T-L"}
             };
         }
 
@@ -74,6 +95,31 @@ namespace WorksetOrchestrator
             }
 
             return worksetName.Replace("DX_", "").Substring(0, Math.Min(3, worksetName.Replace("DX_", "").Length));
+        }
+
+        public string GetWorksetNameFromIflsCode(string iflsCode)
+        {
+            if (string.IsNullOrEmpty(iflsCode))
+            {
+                return "DX_Unknown";
+            }
+
+            if (_iflsToWorksetMapping.TryGetValue(iflsCode, out string worksetName))
+            {
+                return worksetName;
+            }
+
+            string cleanedCode = iflsCode.Replace("-", "").ToUpper();
+
+            foreach (var kvp in _worksetToIflsMapping)
+            {
+                if (kvp.Key.EndsWith(cleanedCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    return kvp.Key;
+                }
+            }
+
+            return "DX_Unknown";
         }
 
         public string GetIflsCodeForPackage(string packageKey)
@@ -108,5 +154,3 @@ namespace WorksetOrchestrator
         }
     }
 }
-
-

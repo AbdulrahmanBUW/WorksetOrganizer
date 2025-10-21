@@ -76,30 +76,66 @@ namespace WorksetOrchestrator
         {
             var mepElements = new List<Element>();
 
+            // COMPREHENSIVE list of all possible categories
             var categories = new List<BuiltInCategory>
             {
+                // Piping
                 BuiltInCategory.OST_PipeFitting,
                 BuiltInCategory.OST_PipeAccessory,
                 BuiltInCategory.OST_PipeCurves,
+                BuiltInCategory.OST_FlexPipeCurves,
+                BuiltInCategory.OST_PipeInsulations,
+                
+                // Ductwork
                 BuiltInCategory.OST_DuctFitting,
                 BuiltInCategory.OST_DuctAccessory,
                 BuiltInCategory.OST_DuctCurves,
+                BuiltInCategory.OST_FlexDuctCurves,
                 BuiltInCategory.OST_DuctTerminal,
+                BuiltInCategory.OST_DuctInsulations,
+                
+                // Mechanical
                 BuiltInCategory.OST_MechanicalEquipment,
                 BuiltInCategory.OST_PlumbingFixtures,
                 BuiltInCategory.OST_Sprinklers,
+                BuiltInCategory.OST_FireAlarmDevices,
+                
+                // Electrical
                 BuiltInCategory.OST_ElectricalEquipment,
                 BuiltInCategory.OST_ElectricalFixtures,
                 BuiltInCategory.OST_LightingFixtures,
+                BuiltInCategory.OST_LightingDevices,
                 BuiltInCategory.OST_CableTray,
                 BuiltInCategory.OST_CableTrayFitting,
                 BuiltInCategory.OST_Conduit,
                 BuiltInCategory.OST_ConduitFitting,
+                BuiltInCategory.OST_DataDevices,
+                BuiltInCategory.OST_CommunicationDevices,
+                BuiltInCategory.OST_SecurityDevices,
+                BuiltInCategory.OST_NurseCallDevices,
+                BuiltInCategory.OST_TelephoneDevices,
+                
+                // Structural
+                BuiltInCategory.OST_StructuralFraming,
+                BuiltInCategory.OST_StructuralColumns,
+                BuiltInCategory.OST_StructuralFoundation,
+                BuiltInCategory.OST_StructuralFramingSystem,
+                BuiltInCategory.OST_StructuralStiffener,
+                BuiltInCategory.OST_StructuralTruss,
+                
+                // Architectural
+                BuiltInCategory.OST_Walls,
+                BuiltInCategory.OST_Doors,
+                BuiltInCategory.OST_Windows,
+                
+                // General
                 BuiltInCategory.OST_GenericModel,
                 BuiltInCategory.OST_SpecialityEquipment,
                 BuiltInCategory.OST_Mass,
                 BuiltInCategory.OST_Furniture,
-                BuiltInCategory.OST_FurnitureSystems
+                BuiltInCategory.OST_FurnitureSystems,
+                BuiltInCategory.OST_Casework,
+                BuiltInCategory.OST_Parts
             };
 
             foreach (var category in categories)
@@ -113,7 +149,7 @@ namespace WorksetOrchestrator
                     var elementsInCategory = collector.ToList();
                     mepElements.AddRange(elementsInCategory);
 
-                    if (category == BuiltInCategory.OST_GenericModel)
+                    if (category == BuiltInCategory.OST_GenericModel && elementsInCategory.Count > 0)
                     {
                         _logAction($"Found {elementsInCategory.Count} Generic Model elements in document '{doc.Title}'");
                     }
@@ -132,41 +168,66 @@ namespace WorksetOrchestrator
         {
             var relevantElements = new List<Element>();
 
+            // Use same comprehensive list as GetAllMepElementsFromDocument
             var relevantCategories = new List<BuiltInCategory>
             {
+                // Piping
                 BuiltInCategory.OST_PipeFitting,
                 BuiltInCategory.OST_PipeAccessory,
                 BuiltInCategory.OST_PipeCurves,
+                BuiltInCategory.OST_FlexPipeCurves,
+                BuiltInCategory.OST_PipeInsulations,
+                
+                // Ductwork
                 BuiltInCategory.OST_DuctFitting,
                 BuiltInCategory.OST_DuctAccessory,
-                BuiltInCategory.OST_FlexPipeCurves,
-                BuiltInCategory.OST_FlexDuctCurves,
                 BuiltInCategory.OST_DuctCurves,
+                BuiltInCategory.OST_FlexDuctCurves,
                 BuiltInCategory.OST_DuctTerminal,
+                BuiltInCategory.OST_DuctInsulations,
+                
+                // Mechanical
                 BuiltInCategory.OST_MechanicalEquipment,
                 BuiltInCategory.OST_PlumbingFixtures,
                 BuiltInCategory.OST_Sprinklers,
+                BuiltInCategory.OST_FireAlarmDevices,
+                
+                // Electrical
                 BuiltInCategory.OST_ElectricalEquipment,
                 BuiltInCategory.OST_ElectricalFixtures,
                 BuiltInCategory.OST_LightingFixtures,
+                BuiltInCategory.OST_LightingDevices,
                 BuiltInCategory.OST_CableTray,
                 BuiltInCategory.OST_CableTrayFitting,
                 BuiltInCategory.OST_Conduit,
                 BuiltInCategory.OST_ConduitFitting,
+                BuiltInCategory.OST_DataDevices,
+                BuiltInCategory.OST_CommunicationDevices,
+                BuiltInCategory.OST_SecurityDevices,
+                BuiltInCategory.OST_NurseCallDevices,
+                BuiltInCategory.OST_TelephoneDevices,
+                
+                // Structural
                 BuiltInCategory.OST_StructuralFraming,
                 BuiltInCategory.OST_StructuralColumns,
                 BuiltInCategory.OST_StructuralFoundation,
                 BuiltInCategory.OST_StructuralFramingSystem,
                 BuiltInCategory.OST_StructuralStiffener,
                 BuiltInCategory.OST_StructuralTruss,
+                
+                // Architectural
                 BuiltInCategory.OST_Walls,
                 BuiltInCategory.OST_Doors,
                 BuiltInCategory.OST_Windows,
+                
+                // General
                 BuiltInCategory.OST_GenericModel,
                 BuiltInCategory.OST_SpecialityEquipment,
                 BuiltInCategory.OST_Mass,
                 BuiltInCategory.OST_Furniture,
-                BuiltInCategory.OST_FurnitureSystems
+                BuiltInCategory.OST_FurnitureSystems,
+                BuiltInCategory.OST_Casework,
+                BuiltInCategory.OST_Parts
             };
 
             foreach (var element in elements)
