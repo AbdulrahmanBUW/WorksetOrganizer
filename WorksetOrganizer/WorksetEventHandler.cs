@@ -91,7 +91,6 @@ namespace WorksetOrchestrator
                 else if (_isWorksetExtraction)
                 {
                     _orchestrator.LogMessage("Event handler: starting workset extraction.");
-                    // NEW: Pass selected worksets
                     _success = _orchestrator.ExecuteWorksetExtraction(_destinationPath,
                         _overwriteFiles, _selectedWorksets);
                 }

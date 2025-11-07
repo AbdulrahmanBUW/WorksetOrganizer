@@ -166,7 +166,6 @@ namespace WorksetOrchestrator
 
                 foreach (var worksetName in availableWorksets.OrderBy(w => w))
                 {
-                    // CORRECTED: Fully qualify the CheckBox type
                     var checkbox = new System.Windows.Controls.CheckBox
                     {
                         Content = worksetName,
@@ -189,7 +188,6 @@ namespace WorksetOrchestrator
             }
         }
 
-        // NEW: Select/Deselect All buttons
         private void BtnSelectAllWorksets_Click(object sender, RoutedEventArgs e)
         {
             foreach (var checkbox in _worksetCheckboxes)
@@ -207,7 +205,6 @@ namespace WorksetOrchestrator
             LogMessage("All worksets deselected");
         }
 
-        // NEW: Get selected worksets
         private List<string> GetSelectedWorksets()
         {
             return _worksetCheckboxes

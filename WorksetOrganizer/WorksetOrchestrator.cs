@@ -94,7 +94,6 @@ namespace WorksetOrchestrator
             }
         }
 
-        // NEW: Method to get available worksets
         public List<string> GetAvailableWorksets()
         {
             try
@@ -106,17 +105,17 @@ namespace WorksetOrchestrator
                 }
 
                 var excludedWorksets = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "DX_Sub-tool",
-            "DX_Tool",
-            "DX_FND",
-            "XXX_GENERAL",
-            "XXX_Hidden",
-            "XXX_Links_CAD",
-            "XXX_Links_NWD",
-            "XXX_Links_Revit",
-            "XXX_Shared levels and Grids"
-        };
+                {
+                    "DX_Sub-tool",
+                    "DX_Tool",
+                    "DX_FND",
+                    "XXX_GENERAL",
+                    "XXX_Hidden",
+                    "XXX_Links_CAD",
+                    "XXX_Links_NWD",
+                    "XXX_Links_Revit",
+                    "XXX_Shared levels and Grids"
+                };
 
                 var allWorksets = new FilteredWorksetCollector(_doc)
                     .OfKind(WorksetKind.UserWorkset)
