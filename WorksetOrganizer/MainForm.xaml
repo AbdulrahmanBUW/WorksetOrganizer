@@ -48,8 +48,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
-                                CornerRadius="8" 
-                                Padding="{TemplateBinding Padding}">
+                            CornerRadius="8" 
+                            Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -86,8 +86,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
-                                CornerRadius="10" 
-                                Padding="{TemplateBinding Padding}">
+                            CornerRadius="10" 
+                            Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -116,8 +116,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
-                                CornerRadius="8" 
-                                Padding="{TemplateBinding Padding}">
+                            CornerRadius="8" 
+                            Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -185,9 +185,9 @@
                         <Grid>
                             <Rectangle Fill="{TemplateBinding Background}" RadiusX="3" RadiusY="3"/>
                             <Rectangle Name="PART_Indicator" 
-                                     Fill="{TemplateBinding Foreground}" 
-                                     RadiusX="3" RadiusY="3"
-                                     HorizontalAlignment="Left"/>
+                                 Fill="{TemplateBinding Foreground}" 
+                                 RadiusX="3" RadiusY="3"
+                                 HorizontalAlignment="Left"/>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -210,13 +210,13 @@
                 <StackPanel DockPanel.Dock="Left">
                     <TextBlock Text="Workset Organizer" Style="{StaticResource TitleLabel}"/>
                     <TextBlock Text="Manage worksets, extract packages, and organize BIM data" 
-                              Style="{StaticResource BodyLabel}" Margin="0,4,0,0"/>
+                          Style="{StaticResource BodyLabel}" Margin="0,4,0,0"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                     <TextBlock Text="DEAXO GmbH" Style="{StaticResource CaptionLabel}" 
-                              HorizontalAlignment="Right" FontWeight="Medium"/>
+                          HorizontalAlignment="Right" FontWeight="Medium"/>
                     <TextBlock Text="Version 1.0.0" Style="{StaticResource CaptionLabel}" 
-                              HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                          HorizontalAlignment="Right" Margin="0,2,0,0"/>
                 </StackPanel>
             </DockPanel>
         </StackPanel>
@@ -228,23 +228,23 @@
 
                 <!-- Segmented Control -->
                 <Grid Background="{StaticResource SystemGray6}" 
-                      Margin="0,0,0,0">
+                  Margin="0,0,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <Button Name="btnQcMode" Grid.Column="0" Content="QC Check &amp; Extraction" 
-                           Style="{StaticResource SegmentedButtonActive}" Click="BtnQcCheck_Click"
-                           Margin="4,4,2,4"/>
+                       Style="{StaticResource SegmentedButtonActive}" Click="BtnQcCheck_Click"
+                       Margin="4,4,2,4"/>
                     <Button Name="btnExtractMode" Grid.Column="1" Content="Extract Worksets" 
-                           Style="{StaticResource SegmentedButton}" Click="BtnExtractWorksets_Click"
-                           Margin="2,4,4,4"/>
+                       Style="{StaticResource SegmentedButton}" Click="BtnExtractWorksets_Click"
+                       Margin="2,4,4,4"/>
                 </Grid>
 
                 <!-- Mode Description -->
                 <TextBlock Name="txtModeDescription" Text="Organizes and validates worksets based on Excel mapping"
-                          Style="{StaticResource BodyLabel}" Margin="0,16,0,0" TextWrapping="Wrap"/>
+                      Style="{StaticResource BodyLabel}" Margin="0,16,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
 
@@ -270,10 +270,31 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBox Name="txtExcelPath" Grid.Column="0" Style="{StaticResource PlaceholderTextBox}" 
-                                    Margin="0,0,12,0" Text="Select mapping Excel file..." TextChanged="txtExcelPath_TextChanged"/>
+                                Margin="0,0,12,0" Text="Select mapping Excel file..." TextChanged="TxtExcelPath_TextChanged"/>
                             <Button Name="btnBrowseExcel" Grid.Column="1" Content="Browse" 
-                                   Style="{StaticResource SecondaryButton}" Click="BtnBrowseExcel_Click"/>
+                               Style="{StaticResource SecondaryButton}" Click="BtnBrowseExcel_Click"/>
                         </Grid>
+                    </StackPanel>
+
+                    <!-- Workset Selection Panel (Extract Mode Only) -->
+                    <StackPanel Name="panelWorksetSelection" Visibility="Collapsed" Margin="0,16,0,0">
+                        <TextBlock Text="Select Worksets to Extract" Style="{StaticResource BodyLabel}" Margin="0,0,0,8"/>
+                        <Border Background="White" BorderBrush="#FFD1D1D6" BorderThickness="1" CornerRadius="8" 
+                            MaxHeight="200" Padding="8">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Name="worksetCheckboxContainer">
+                                    <!-- Checkboxes will be dynamically generated here -->
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Name="btnSelectAllWorksets" Content="Select All" 
+                                Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
+                                Click="BtnSelectAllWorksets_Click"/>
+                            <Button Name="btnDeselectAllWorksets" Content="Deselect All" 
+                                Style="{StaticResource SecondaryButton}"
+                                Click="BtnDeselectAllWorksets_Click"/>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Destination Folder -->
@@ -290,13 +311,13 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Border Grid.Column="0" Margin="0,0,12,0" Height="40" 
-                                       Background="White" BorderBrush="#FFD1D1D6" BorderThickness="1" CornerRadius="8">
+                                   Background="White" BorderBrush="#FFD1D1D6" BorderThickness="1" CornerRadius="8">
                                     <Label Name="lblDestination" Content="Select destination folder..." 
-                                          Foreground="#FF666666" FontStyle="Italic" FontSize="14" 
-                                          VerticalAlignment="Center" Padding="12,0" FontFamily="Segoe UI"/>
+                                      Foreground="#FF666666" FontStyle="Italic" FontSize="14" 
+                                      VerticalAlignment="Center" Padding="12,0" FontFamily="Segoe UI"/>
                                 </Border>
                                 <Button Name="btnBrowseDestination" Grid.Column="1" Content="Browse" 
-                                       Style="{StaticResource SecondaryButton}" Click="BtnBrowseDestination_Click"/>
+                                   Style="{StaticResource SecondaryButton}" Click="BtnBrowseDestination_Click"/>
                             </Grid>
                         </Grid>
                     </StackPanel>
@@ -304,19 +325,19 @@
                     <!-- Options -->
                     <StackPanel Name="panelOptions" Orientation="Horizontal" Margin="0,20,0,0">
                         <CheckBox Name="chkOverwrite" Content="Overwrite existing files" 
-                                 VerticalAlignment="Center" Margin="0,0,24,0" FontSize="14"/>
+                             VerticalAlignment="Center" Margin="0,0,24,0" FontSize="14"/>
                         <CheckBox Name="chkExportQc" Content="Export QC elements" 
-                                 VerticalAlignment="Center" FontSize="14"/>
+                             VerticalAlignment="Center" FontSize="14"/>
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Log Area -->
                 <Border Grid.Row="1" Background="{StaticResource SystemSecondaryBackground}" 
-                       CornerRadius="8" Padding="16" Margin="0,0,0,20">
+                   CornerRadius="8" Padding="16" Margin="0,0,0,20">
                     <TextBox Name="txtLog" IsReadOnly="True" Background="Transparent" BorderThickness="0"
-                            FontFamily="Consolas, monospace" FontSize="12" 
-                            Foreground="{StaticResource LabelSecondary}" TextWrapping="Wrap"
-                            VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                        FontFamily="Consolas, monospace" FontSize="12" 
+                        Foreground="{StaticResource LabelSecondary}" TextWrapping="Wrap"
+                        VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
                 </Border>
 
                 <!-- Progress Section -->
@@ -337,14 +358,14 @@
         <!-- Action Buttons -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Name="btnIntegrateTemplate" Content="Integrate Template" 
-                   Style="{StaticResource SecondaryButton}" Margin="0,0,12,0"
-                   Click="BtnIntegrateTemplate_Click" Visibility="Collapsed"/>
+               Style="{StaticResource SecondaryButton}" Margin="0,0,12,0"
+               Click="BtnIntegrateTemplate_Click" Visibility="Collapsed"/>
             <Button Name="btnExecute" Content="Start Processing" 
-                   Style="{StaticResource PrimaryButton}" Margin="0,0,12,0"
-                   Click="BtnExecute_Click"/>
+               Style="{StaticResource PrimaryButton}" Margin="0,0,12,0"
+               Click="BtnExecute_Click"/>
             <Button Name="btnCancel" Content="Cancel" 
-                   Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"/>
+               Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"/>
         </StackPanel>
 
     </Grid>
-</Window>
+</Window> 

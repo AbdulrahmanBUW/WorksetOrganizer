@@ -10,9 +10,9 @@ namespace WorksetOrchestrator
 {
     public class WorksetOrchestrator
     {
-        private Document _doc;
-        private UIDocument _uiDoc;
-        private StringBuilder _log = new StringBuilder();
+        private readonly Document _doc;
+        private readonly UIDocument _uiDoc;
+        private readonly StringBuilder _log = new StringBuilder();
 
         private readonly WorksetMapper _worksetMapper;
         private readonly ElementClassifier _classifier;
@@ -94,7 +94,48 @@ namespace WorksetOrchestrator
             }
         }
 
-        public bool ExecuteWorksetExtraction(string destinationPath, bool overwriteFiles)
+        // NEW: Method to get available worksets
+        public List<string> GetAvailableWorksets()
+        {
+            try
+            {
+                if (!_doc.IsWorkshared)
+                {
+                    LogMessage("Document is not workshared - no worksets available");
+                    return new List<string>();
+                }
+
+                var excludedWorksets = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "DX_Sub-tool",
+            "DX_Tool",
+            "DX_FND",
+            "XXX_GENERAL",
+            "XXX_Hidden",
+            "XXX_Links_CAD",
+            "XXX_Links_NWD",
+            "XXX_Links_Revit",
+            "XXX_Shared levels and Grids"
+        };
+
+                var allWorksets = new FilteredWorksetCollector(_doc)
+                    .OfKind(WorksetKind.UserWorkset)
+                    .Where(w => !excludedWorksets.Contains(w.Name))
+                    .Select(w => w.Name)
+                    .OrderBy(name => name)
+                    .ToList();
+
+                return allWorksets;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error getting available worksets: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        public bool ExecuteWorksetExtraction(string destinationPath, bool overwriteFiles,
+    List<string> selectedWorksets = null)
         {
             try
             {
@@ -105,9 +146,17 @@ namespace WorksetOrchestrator
                 }
 
                 LogMessage("=== WORKSET EXTRACTION MODE ===");
-                LogMessage("Analyzing available worksets...");
 
-                // Define worksets to exclude from extraction
+                // NEW: Filter logic
+                if (selectedWorksets != null && selectedWorksets.Count > 0)
+                {
+                    LogMessage($"User selected {selectedWorksets.Count} specific worksets for extraction");
+                }
+                else
+                {
+                    LogMessage("Extracting all available worksets (no selection provided)");
+                }
+
                 var excludedWorksets = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "DX_Sub-tool",
@@ -126,10 +175,9 @@ namespace WorksetOrchestrator
                     .Where(w => w.Kind == WorksetKind.UserWorkset)
                     .ToList();
 
-                LogMessage($"Found {allWorksets.Count} user worksets in the model:");
-
                 var worksetElementMapping = new Dictionary<string, List<ElementId>>();
                 int excludedCount = 0;
+                int skippedBySelection = 0;
 
                 foreach (var workset in allWorksets)
                 {
@@ -138,6 +186,15 @@ namespace WorksetOrchestrator
                     {
                         LogMessage($"Skipping excluded workset: {workset.Name}");
                         excludedCount++;
+                        continue;
+                    }
+
+                    // NEW: Skip if not in selected worksets (when selection is provided)
+                    if (selectedWorksets != null && selectedWorksets.Count > 0 &&
+                        !selectedWorksets.Contains(workset.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        LogMessage($"Skipping unselected workset: {workset.Name}");
+                        skippedBySelection++;
                         continue;
                     }
 
@@ -171,6 +228,10 @@ namespace WorksetOrchestrator
 
                 LogMessage($"Worksets with relevant elements: {worksetElementMapping.Count}");
                 LogMessage($"Excluded worksets: {excludedCount}");
+                if (selectedWorksets != null && selectedWorksets.Count > 0)
+                {
+                    LogMessage($"Skipped by user selection: {skippedBySelection}");
+                }
 
                 _worksetManager.SynchronizeWithCentral();
                 _exportService.ExportWorksetRVTs(worksetElementMapping, destinationPath, overwriteFiles);

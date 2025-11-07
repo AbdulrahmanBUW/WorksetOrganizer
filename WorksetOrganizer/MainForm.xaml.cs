@@ -8,18 +8,20 @@ using System.Windows.Interop;
 using System.Windows.Forms;
 using System.Collections.Generic;
 using System.Windows.Media;
+using System.Windows.Controls;
 
 namespace WorksetOrchestrator
 {
     public partial class MainForm : Window
     {
-        private UIDocument _uiDoc;
-        private WorksetOrchestrator _orchestrator;
-        private WorksetEventHandler _eventHandler;
-        private ExternalEvent _externalEvent;
-        private List<string> _extractedFiles = new List<string>();
+        private readonly UIDocument _uiDoc;
+        private readonly WorksetOrchestrator _orchestrator;
+        private readonly WorksetEventHandler _eventHandler;
+        private readonly ExternalEvent _externalEvent;
+        private readonly List<string> _extractedFiles = new List<string>();
         private string _lastDestinationPath;
         private bool _isExtractWorksetMode = false;
+        private readonly List<System.Windows.Controls.CheckBox> _worksetCheckboxes = new List<System.Windows.Controls.CheckBox>();
 
         public MainForm(UIDocument uiDoc, IntPtr revitMainWindowHandle)
         {
@@ -127,6 +129,7 @@ namespace WorksetOrchestrator
 
             panelExcelFile.Visibility = Visibility.Visible;
             panelOptions.Visibility = Visibility.Visible;
+            panelWorksetSelection.Visibility = Visibility.Collapsed;
 
             txtModeDescription.Text = "Organizes and validates worksets based on Excel mapping. Elements are categorized by system patterns and moved to appropriate worksets before export.";
 
@@ -134,6 +137,85 @@ namespace WorksetOrchestrator
 
             LogMessage("Switched to QC Check & Extraction mode");
         }
+
+        private void PopulateWorksetCheckboxes()
+        {
+            worksetCheckboxContainer.Children.Clear();
+            _worksetCheckboxes.Clear();
+
+            try
+            {
+                var availableWorksets = _orchestrator.GetAvailableWorksets();
+
+                if (availableWorksets.Count == 0)
+                {
+                    var noWorksetsText = new TextBlock
+                    {
+                        Text = "No worksets available in this document",
+                        FontSize = 14,
+                        FontStyle = FontStyles.Italic,
+                        Foreground = new SolidColorBrush(Color.FromRgb(142, 142, 147)),
+                        Margin = new Thickness(0, 8, 0, 8)
+                    };
+                    worksetCheckboxContainer.Children.Add(noWorksetsText);
+                    LogMessage("No worksets available for selection");
+                    return;
+                }
+
+                LogMessage($"Found {availableWorksets.Count} worksets available for selection");
+
+                foreach (var worksetName in availableWorksets.OrderBy(w => w))
+                {
+                    // CORRECTED: Fully qualify the CheckBox type
+                    var checkbox = new System.Windows.Controls.CheckBox
+                    {
+                        Content = worksetName,
+                        IsChecked = true, // Default to all selected
+                        Margin = new Thickness(0, 4, 0, 4),
+                        FontSize = 14,
+                        FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
+                    };
+
+                    _worksetCheckboxes.Add(checkbox);
+                    worksetCheckboxContainer.Children.Add(checkbox);
+                }
+
+                LogMessage($"Loaded {_worksetCheckboxes.Count} worksets (all selected by default)");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error loading worksets: {ex.Message}");
+                ShowAlert("Could not load worksets from the document.", "Error");
+            }
+        }
+
+        // NEW: Select/Deselect All buttons
+        private void BtnSelectAllWorksets_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var checkbox in _worksetCheckboxes)
+            {
+                checkbox.IsChecked = true;
+            }
+            LogMessage("All worksets selected");
+        }
+        private void BtnDeselectAllWorksets_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var checkbox in _worksetCheckboxes)
+            {
+                checkbox.IsChecked = false;
+            }
+            LogMessage("All worksets deselected");
+        }
+
+        // NEW: Get selected worksets
+        private List<string> GetSelectedWorksets()
+        {
+            return _worksetCheckboxes
+                .Where(cb => cb.IsChecked == true)
+                .Select(cb => cb.Content.ToString())
+                .ToList();
+        }
+
 
         private void SetExtractWorksetsMode()
         {
@@ -144,10 +226,13 @@ namespace WorksetOrchestrator
 
             panelExcelFile.Visibility = Visibility.Collapsed;
             panelOptions.Visibility = Visibility.Collapsed;
+            panelWorksetSelection.Visibility = Visibility.Visible;
 
-            txtModeDescription.Text = "Extracts all available worksets into separate files. Preserves existing workset organization without reorganization.";
+            txtModeDescription.Text = "Extracts selected worksets into separate files. Choose which worksets to extract using the checkboxes below.";
 
             btnExecute.Content = "Extract Worksets";
+
+            PopulateWorksetCheckboxes();
 
             LogMessage("Switched to Extract Worksets mode");
         }
@@ -286,12 +371,21 @@ namespace WorksetOrchestrator
                 return;
             }
 
+            var selectedWorksets = GetSelectedWorksets();
+
+            if (selectedWorksets.Count == 0)
+            {
+                ShowAlert("Please select at least one workset to extract.", "No Worksets Selected");
+                return;
+            }
+
             await ExecuteOperation("Extract Worksets", async () =>
             {
                 LogMessage("=== EXTRACT WORKSETS STARTED ===");
-                LogMessage("Extracting all available worksets...");
+                LogMessage($"Extracting {selectedWorksets.Count} selected worksets...");
+                LogMessage($"Selected: {string.Join(", ", selectedWorksets)}");
 
-                _eventHandler.SetWorksetExtractionParameters(_orchestrator, destinationPath, true);
+                _eventHandler.SetWorksetExtractionParameters(_orchestrator, destinationPath, true, selectedWorksets);
 
                 LogMessage("Starting workset extraction...");
                 _externalEvent.Raise();
@@ -323,7 +417,8 @@ namespace WorksetOrchestrator
                     UpdateProgress(100, "Completed successfully");
                     LogMessage($"=== {operationName.ToUpper()} COMPLETED SUCCESSFULLY ===");
 
-                    _extractedFiles = GetExtractedFiles(_lastDestinationPath);
+                    _extractedFiles.Clear();
+                    _extractedFiles.AddRange(GetExtractedFiles(_lastDestinationPath));
                     LogMessage($"Found {_extractedFiles.Count} extracted files");
 
                     if (_extractedFiles.Count > 0)
@@ -523,7 +618,7 @@ namespace WorksetOrchestrator
             System.Windows.MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        private void txtExcelPath_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        private void TxtExcelPath_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
         }
     }

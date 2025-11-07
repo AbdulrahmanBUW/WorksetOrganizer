@@ -18,6 +18,7 @@ namespace WorksetOrchestrator
 
         private bool _isTemplateIntegration;
         private List<string> _extractedFiles;
+        private List<string> _selectedWorksets;
         private string _templateFilePath;
 
         private bool _isWorksetExtraction;
@@ -44,11 +45,12 @@ namespace WorksetOrchestrator
         }
 
         public void SetWorksetExtractionParameters(WorksetOrchestrator orchestrator,
-            string destinationPath, bool overwriteFiles)
+    string destinationPath, bool overwriteFiles, List<string> selectedWorksets = null)
         {
             _orchestrator = orchestrator;
             _destinationPath = destinationPath;
             _overwriteFiles = overwriteFiles;
+            _selectedWorksets = selectedWorksets; // NEW
             _isComplete = false;
             _success = false;
             _lastException = null;
@@ -89,7 +91,9 @@ namespace WorksetOrchestrator
                 else if (_isWorksetExtraction)
                 {
                     _orchestrator.LogMessage("Event handler: starting workset extraction.");
-                    _success = _orchestrator.ExecuteWorksetExtraction(_destinationPath, _overwriteFiles);
+                    // NEW: Pass selected worksets
+                    _success = _orchestrator.ExecuteWorksetExtraction(_destinationPath,
+                        _overwriteFiles, _selectedWorksets);
                 }
                 else
                 {
