@@ -24,7 +24,7 @@ namespace WorksetOrchestrator
             {
                 {"DX_BDA", "B-D"},
                 {"DX_CDA", "D-D"},
-                {"DX_CHM", "C-S"},
+                {"DX_CHM", "C-D"},           // CHANGED from C-S to C-D
                 {"DX_CKE", "C-L"},
                 {"DX_ELT", "E-S"},
                 {"DX_EXH", "A-X"},
@@ -34,7 +34,7 @@ namespace WorksetOrchestrator
                 {"DX_PS", "G-S"},
                 {"DX_PWI", "U-D"},
                 {"DX_VAC", "V-D"},
-                {"DX_SLUR", "M-S"},
+                {"DX_SLUR", "M-D"},          // CHANGED from M-S to M-D
                 {"DX_STB", "STB"},
                 {"DX_UPW", "U-D"},
                 {"DX_PVAC", "V-V"},
@@ -66,7 +66,7 @@ namespace WorksetOrchestrator
             {
                 {"B-D", "B-D"},
                 {"D-D", "D-D"},
-                {"C-S", "C-S"},
+                {"C-D", "C-D"},              // ADDED
                 {"C-L", "C-L"},
                 {"E-S", "E-S"},
                 {"ELT", "E-S"},
@@ -77,7 +77,7 @@ namespace WorksetOrchestrator
                 {"G-S", "G-S"},
                 {"U-D", "U-D"},
                 {"V-D", "V-D"},
-                {"M-S", "M-S"},
+                {"M-D", "M-D"},              // ADDED
                 {"V-V", "V-V"},
                 {"STB", "STB"},
                 {"RR", "RR"},

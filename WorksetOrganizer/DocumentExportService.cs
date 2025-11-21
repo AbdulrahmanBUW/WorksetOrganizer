@@ -105,10 +105,22 @@ namespace WorksetOrchestrator
                 }
 
                 string iflsCode = _worksetMapper.GetIflsCodeForWorkset(worksetName);
-                string exportFileName = $"{projectPrefix}_{iflsCode}_MO_Part_001_DX.rvt";
+
+                // HARDCODED: PWI = Part_001, UPW = Part_002
+                int partNumber = 1; // Default
+                if (worksetName.Equals("DX_PWI", StringComparison.OrdinalIgnoreCase))
+                {
+                    partNumber = 1;
+                }
+                else if (worksetName.Equals("DX_UPW", StringComparison.OrdinalIgnoreCase))
+                {
+                    partNumber = 2;
+                }
+
+                string exportFileName = $"{projectPrefix}_{iflsCode}_MO_Part_{partNumber:D3}_DX.rvt";
                 string exportFilePath = Path.Combine(destinationPath, exportFileName);
 
-                _logAction($"Processing workset '{worksetName}' -> iFLS code '{iflsCode}' -> file '{exportFileName}'");
+                _logAction($"Processing workset '{worksetName}' -> iFLS code '{iflsCode}' -> Part {partNumber:D3} -> file '{exportFileName}'");
 
                 if (File.Exists(exportFilePath) && !overwrite)
                 {

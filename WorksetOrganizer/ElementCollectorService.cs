@@ -177,7 +177,7 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_PipeCurves,
                 BuiltInCategory.OST_FlexPipeCurves,
                 BuiltInCategory.OST_PipeInsulations,
-                
+        
                 // Ductwork
                 BuiltInCategory.OST_DuctFitting,
                 BuiltInCategory.OST_DuctAccessory,
@@ -185,13 +185,13 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_FlexDuctCurves,
                 BuiltInCategory.OST_DuctTerminal,
                 BuiltInCategory.OST_DuctInsulations,
-                
+        
                 // Mechanical
                 BuiltInCategory.OST_MechanicalEquipment,
                 BuiltInCategory.OST_PlumbingFixtures,
                 BuiltInCategory.OST_Sprinklers,
                 BuiltInCategory.OST_FireAlarmDevices,
-                
+        
                 // Electrical
                 BuiltInCategory.OST_ElectricalEquipment,
                 BuiltInCategory.OST_ElectricalFixtures,
@@ -206,7 +206,7 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_SecurityDevices,
                 BuiltInCategory.OST_NurseCallDevices,
                 BuiltInCategory.OST_TelephoneDevices,
-                
+        
                 // Structural
                 BuiltInCategory.OST_StructuralFraming,
                 BuiltInCategory.OST_StructuralColumns,
@@ -214,12 +214,12 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_StructuralFramingSystem,
                 BuiltInCategory.OST_StructuralStiffener,
                 BuiltInCategory.OST_StructuralTruss,
-                
+        
                 // Architectural
                 BuiltInCategory.OST_Walls,
                 BuiltInCategory.OST_Doors,
                 BuiltInCategory.OST_Windows,
-                
+        
                 // General
                 BuiltInCategory.OST_GenericModel,
                 BuiltInCategory.OST_SpecialityEquipment,
@@ -234,22 +234,21 @@ namespace WorksetOrchestrator
             {
                 try
                 {
-                    if (element.Category != null)
+                    // CRITICAL FIX: Skip elements without categories - they can't be copied
+                    if (element.Category == null)
                     {
-                        var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
-                        if (relevantCategories.Contains(categoryId))
-                        {
-                            relevantElements.Add(element);
-                            if (categoryId == BuiltInCategory.OST_GenericModel)
-                            {
-                                _logAction($"    Found Generic Model: {element.Id}");
-                            }
-                        }
+                        _logAction($"    Skipping element without category: {element.Id} (non-copyable)");
+                        continue;
                     }
-                    else
+
+                    var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+                    if (relevantCategories.Contains(categoryId))
                     {
-                        _logAction($"    Found element without category: {element.Id} - including anyway");
                         relevantElements.Add(element);
+                        if (categoryId == BuiltInCategory.OST_GenericModel)
+                        {
+                            _logAction($"    Found Generic Model: {element.Id}");
+                        }
                     }
                 }
                 catch (Exception ex)
