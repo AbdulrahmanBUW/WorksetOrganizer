@@ -168,11 +168,15 @@ namespace WorksetOrchestrator
                 {
                     var checkbox = new System.Windows.Controls.CheckBox
                     {
-                        Content = worksetName,
+                        // IMPORTANT: In WPF, underscore (_) is used as access key indicator
+                        // To display underscore literally, we must escape it by doubling (__)
+                        Content = worksetName.Replace("_", "__"),
                         IsChecked = true, // Default to all selected
                         Margin = new Thickness(0, 4, 0, 4),
                         FontSize = 14,
-                        FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
+                        FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+                        // Store the actual workset name (with single underscore) in Tag
+                        Tag = worksetName
                     };
 
                     _worksetCheckboxes.Add(checkbox);
@@ -196,6 +200,7 @@ namespace WorksetOrchestrator
             }
             LogMessage("All worksets selected");
         }
+
         private void BtnDeselectAllWorksets_Click(object sender, RoutedEventArgs e)
         {
             foreach (var checkbox in _worksetCheckboxes)
@@ -207,12 +212,13 @@ namespace WorksetOrchestrator
 
         private List<string> GetSelectedWorksets()
         {
+            // IMPORTANT: Use the Tag property which contains the actual workset name
+            // (with single underscore), not the Content which has escaped underscores
             return _worksetCheckboxes
                 .Where(cb => cb.IsChecked == true)
-                .Select(cb => cb.Content.ToString())
+                .Select(cb => cb.Tag?.ToString() ?? cb.Content.ToString().Replace("__", "_"))
                 .ToList();
         }
-
 
         private void SetExtractWorksetsMode()
         {
@@ -306,6 +312,7 @@ namespace WorksetOrchestrator
                 await RunQcCheckAndExtraction();
             }
         }
+
         private async Task RunQcCheckAndExtraction()
         {
             string excelPath = txtExcelPath.Tag as string;
@@ -533,6 +540,7 @@ namespace WorksetOrchestrator
                 btnCancel.Content = "Cancel";
             }
         }
+
         private List<string> GetExtractedFiles(string destinationPath)
         {
             var extractedFiles = new List<string>();
