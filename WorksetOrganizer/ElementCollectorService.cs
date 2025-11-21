@@ -10,6 +10,28 @@ namespace WorksetOrchestrator
         private readonly Document _doc;
         private readonly Action<string> _logAction;
 
+        // Categories that should NOT be collected for export
+        private static readonly HashSet<BuiltInCategory> ExcludedCategories = new HashSet<BuiltInCategory>
+        {
+            BuiltInCategory.OST_RvtLinks,
+            BuiltInCategory.OST_Views,
+            BuiltInCategory.OST_Sheets,
+            BuiltInCategory.OST_Schedules,
+            BuiltInCategory.OST_ProjectInformation,
+            BuiltInCategory.OST_SharedBasePoint,
+            BuiltInCategory.OST_ProjectBasePoint,
+            BuiltInCategory.OST_Cameras,
+            BuiltInCategory.OST_Matchline,
+            BuiltInCategory.OST_VolumeOfInterest,  // This is Scope Boxes in Revit API
+            BuiltInCategory.OST_Viewers,
+            BuiltInCategory.OST_AreaSchemes,
+            BuiltInCategory.OST_MEPSpaceSeparationLines,
+            BuiltInCategory.OST_CurtainGrids,
+            BuiltInCategory.OST_CurtainGridsRoof,
+            BuiltInCategory.OST_CurtainGridsSystem,
+            BuiltInCategory.OST_CurtainGridsWall
+        };
+
         public ElementCollectorService(Document doc, Action<string> logAction)
         {
             _doc = doc;
@@ -167,6 +189,10 @@ namespace WorksetOrchestrator
         public List<Element> GetRelevantElementsFromCollection(List<Element> elements)
         {
             var relevantElements = new List<Element>();
+            int skippedNoCategory = 0;
+            int skippedExcluded = 0;
+            int skippedViewSpecific = 0;
+            int skippedElementType = 0;
 
             // Use same comprehensive list as GetAllMepElementsFromDocument
             var relevantCategories = new List<BuiltInCategory>
@@ -177,7 +203,7 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_PipeCurves,
                 BuiltInCategory.OST_FlexPipeCurves,
                 BuiltInCategory.OST_PipeInsulations,
-        
+                
                 // Ductwork
                 BuiltInCategory.OST_DuctFitting,
                 BuiltInCategory.OST_DuctAccessory,
@@ -185,13 +211,13 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_FlexDuctCurves,
                 BuiltInCategory.OST_DuctTerminal,
                 BuiltInCategory.OST_DuctInsulations,
-        
+                
                 // Mechanical
                 BuiltInCategory.OST_MechanicalEquipment,
                 BuiltInCategory.OST_PlumbingFixtures,
                 BuiltInCategory.OST_Sprinklers,
                 BuiltInCategory.OST_FireAlarmDevices,
-        
+                
                 // Electrical
                 BuiltInCategory.OST_ElectricalEquipment,
                 BuiltInCategory.OST_ElectricalFixtures,
@@ -206,7 +232,7 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_SecurityDevices,
                 BuiltInCategory.OST_NurseCallDevices,
                 BuiltInCategory.OST_TelephoneDevices,
-        
+                
                 // Structural
                 BuiltInCategory.OST_StructuralFraming,
                 BuiltInCategory.OST_StructuralColumns,
@@ -214,12 +240,12 @@ namespace WorksetOrchestrator
                 BuiltInCategory.OST_StructuralFramingSystem,
                 BuiltInCategory.OST_StructuralStiffener,
                 BuiltInCategory.OST_StructuralTruss,
-        
+                
                 // Architectural
                 BuiltInCategory.OST_Walls,
                 BuiltInCategory.OST_Doors,
                 BuiltInCategory.OST_Windows,
-        
+                
                 // General
                 BuiltInCategory.OST_GenericModel,
                 BuiltInCategory.OST_SpecialityEquipment,
@@ -234,27 +260,56 @@ namespace WorksetOrchestrator
             {
                 try
                 {
-                    // CRITICAL FIX: Skip elements without categories - they can't be copied
+                    // Skip element types
+                    if (element is ElementType)
+                    {
+                        skippedElementType++;
+                        continue;
+                    }
+
+                    // Skip view-specific elements
+                    if (element.OwnerViewId != ElementId.InvalidElementId)
+                    {
+                        skippedViewSpecific++;
+                        continue;
+                    }
+
                     if (element.Category == null)
                     {
                         _logAction($"    Skipping element without category: {element.Id} (non-copyable)");
+                        skippedNoCategory++;
                         continue;
                     }
 
                     var categoryId = (BuiltInCategory)element.Category.Id.IntegerValue;
+
+                    // Check if this is an excluded category
+                    if (ExcludedCategories.Contains(categoryId))
+                    {
+                        skippedExcluded++;
+                        continue;
+                    }
+
                     if (relevantCategories.Contains(categoryId))
                     {
                         relevantElements.Add(element);
-                        if (categoryId == BuiltInCategory.OST_GenericModel)
-                        {
-                            _logAction($"    Found Generic Model: {element.Id}");
-                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     _logAction($"Warning: Error checking element {element.Id}: {ex.Message}");
                 }
+            }
+
+            // Log summary if significant filtering occurred
+            int totalSkipped = skippedNoCategory + skippedExcluded + skippedViewSpecific + skippedElementType;
+            if (totalSkipped > 10)
+            {
+                _logAction($"  Element filtering summary: {relevantElements.Count} relevant, {totalSkipped} skipped");
+                if (skippedNoCategory > 0) _logAction($"    - No category: {skippedNoCategory}");
+                if (skippedExcluded > 0) _logAction($"    - Excluded categories: {skippedExcluded}");
+                if (skippedViewSpecific > 0) _logAction($"    - View-specific: {skippedViewSpecific}");
+                if (skippedElementType > 0) _logAction($"    - Element types: {skippedElementType}");
             }
 
             return relevantElements;
